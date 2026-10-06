@@ -1,0 +1,26 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon, tg_logo %}
+{% block title %}Поддержка в Telegram — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Поддержка в Telegram</h1>
+  <p>Помощник отвечает сразу, по-таджикски и по-русски: заказы, пополнения, баланс, свой бот.</p>
+</section>
+{% if not code %}
+<div class="card empty">Бот поддержки ещё не подключён.</div>
+{% else %}
+<div class="card support-card">
+  <div class="sc-step"><span class="n">1</span><div>
+    <b>Нажмите кнопку</b> — откроется бот, и он сразу узнает ваш аккаунт.
+    {% if bot %}<a class="btn primary lg block sc-open" href="https://t.me/{{ bot }}?start={{ code }}" target="_blank" rel="noopener">{{ tg_logo(22) }}Открыть бота @{{ bot }}</a>{% endif %}
+  </div></div>
+  <div class="sc-step"><span class="n">2</span><div>
+    <b>Или напишите боту свой email</b> — код придёт в 🔔 Уведомления. Ещё можно открыть {% if bot %}<a href="https://t.me/{{ bot }}" target="_blank" rel="noopener">@{{ bot }}</a>{% else %}бота поддержки{% endif %} и отправьте этот код:
+    <div class="sc-code"><code id="sc-code">DX-{{ code }}</code>
+      <button class="btn sm" type="button" data-copy="DX-{{ code }}">{{ icon('copy', 16) }}Копировать</button></div>
+    <div class="muted small">Код одноразовый, действует {{ minutes }} минут. Нужен новый — обновите страницу.</div>
+  </div></div>
+  <p class="hint">{{ icon('shield', 16) }} Никому не пересылайте код: с ним видны ваши заказы и баланс.</p>
+</div>
+{% endif %}
+{% endblock %}

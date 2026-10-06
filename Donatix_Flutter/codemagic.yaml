@@ -1,0 +1,48 @@
+workflows:
+  android-check:
+    name: Donatix Android checks and installable APK
+    instance_type: mac_mini_m2
+    max_build_duration: 45
+    environment:
+      flutter: 3.35.4
+      java: 17
+    scripts:
+      - name: Get dependencies
+        script: flutter pub get
+      - name: Analyze
+        script: flutter analyze
+      - name: Build APK for device acceptance
+        script: flutter build apk --debug --dart-define=DONATIX_URL=https://donatix.tj
+    artifacts:
+      - build/app/outputs/flutter-apk/app-debug.apk
+  android-release:
+    name: Donatix signed APK and Play AAB
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      flutter: 3.35.4
+      java: 17
+      android_signing:
+        - donatix_upload
+    scripts:
+      - name: Configure owner signing key
+        script: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          fields = {'storeFile': os.environ['CM_KEYSTORE_PATH'], 'storePassword': os.environ['CM_KEYSTORE_PASSWORD'], 'keyAlias': os.environ['CM_KEY_ALIAS'], 'keyPassword': os.environ['CM_KEY_PASSWORD']}
+          def escape(s):
+              return s.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('=', '\\=').replace(':', '\\:')
+          Path('android/key.properties').write_text('\n'.join(k + '=' + escape(v) for k, v in fields.items()))
+          PY
+      - name: Dependencies and analysis
+        script: |
+          flutter pub get
+          flutter analyze
+      - name: Signed APK
+        script: flutter build apk --release --dart-define=DONATIX_URL=https://donatix.tj
+      - name: Google Play bundle
+        script: flutter build appbundle --release --dart-define=DONATIX_URL=https://donatix.tj
+    artifacts:
+      - build/app/outputs/flutter-apk/app-release.apk
+      - build/app/outputs/bundle/release/app-release.aab

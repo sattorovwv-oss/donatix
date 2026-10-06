@@ -1,0 +1,759 @@
+@import "tailwindcss";
+
+/* =========================================================
+   ШРИФТЫ — локальные, с хостинга. Никаких внешних запросов.
+   Покрытие таджикских букв (ғ ӣ қ ӯ ҳ ҷ) проверено:
+   Exo 2 и Golos Text содержат все 12 глифов.
+   ========================================================= */
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/golos-text-latin-400-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/golos-text-cyrillic-400-normal.woff2') format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('/fonts/golos-text-cyrillic-ext-400-normal.woff2') format('woff2');
+  unicode-range: U+0460-052F,U+1C80-1C88,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/golos-text-latin-500-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/golos-text-cyrillic-500-normal.woff2') format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('/fonts/golos-text-cyrillic-ext-500-normal.woff2') format('woff2');
+  unicode-range: U+0460-052F,U+1C80-1C88,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/golos-text-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/golos-text-cyrillic-600-normal.woff2') format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+@font-face {
+  font-family: 'Golos Text'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/golos-text-cyrillic-ext-600-normal.woff2') format('woff2');
+  unicode-range: U+0460-052F,U+1C80-1C88,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+}
+
+@font-face {
+  font-family: 'Exo 2'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/exo-2-latin-600-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Exo 2'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/exo-2-cyrillic-600-normal.woff2') format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+@font-face {
+  font-family: 'Exo 2'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('/fonts/exo-2-cyrillic-ext-600-normal.woff2') format('woff2');
+  unicode-range: U+0460-052F,U+1C80-1C88,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+}
+@font-face {
+  font-family: 'Exo 2'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('/fonts/exo-2-latin-700-normal.woff2') format('woff2');
+  unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+2074,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face {
+  font-family: 'Exo 2'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('/fonts/exo-2-cyrillic-700-normal.woff2') format('woff2');
+  unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116;
+}
+@font-face {
+  font-family: 'Exo 2'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('/fonts/exo-2-cyrillic-ext-700-normal.woff2') format('woff2');
+  unicode-range: U+0460-052F,U+1C80-1C88,U+20B4,U+2DE0-2DFF,U+A640-A69F,U+FE2E-FE2F;
+}
+
+/* =========================================================
+   ДИЗАЙН-ТОКЕНЫ
+   Чёрный + синий + стекло. Тема одна — тёмная: это
+   осознанное решение, сайт задуман как ночной интерфейс.
+   ========================================================= */
+:root {
+  /* Фон — не чистый чёрный, а с уходом в синий: он «дороже» и держит акцент */
+  --bg:        #05070D;
+  --bg-2:      #080D18;
+  --bg-3:      #0C1322;
+
+  --blue:      #2F7BFF;
+  --blue-2:    #5EA8FF;
+  --cyan:      #38E0FF;
+  --violet:    #7C6BFF;
+
+  --ink:       #EAF1FF;
+  --ink-2:     #9DB0CF;
+  --ink-3:     #5D6E8C;
+
+  --glass:     rgba(255, 255, 255, 0.045);
+  --glass-2:   rgba(255, 255, 255, 0.075);
+  --line:      rgba(158, 190, 255, 0.14);
+  --line-2:    rgba(158, 190, 255, 0.28);
+
+  --ease:      cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-out:  cubic-bezier(0.16, 1, 0.3, 1);
+
+  --nav-h:     72px;
+}
+
+@theme inline {
+  --color-bg:      var(--bg);
+  --color-bg-2:    var(--bg-2);
+  --color-bg-3:    var(--bg-3);
+  --color-blue:    var(--blue);
+  --color-blue-2:  var(--blue-2);
+  --color-cyan:    var(--cyan);
+  --color-violet:  var(--violet);
+  --color-ink:     var(--ink);
+  --color-ink-2:   var(--ink-2);
+  --color-ink-3:   var(--ink-3);
+  --color-line:    var(--line);
+  --font-display:  'Exo 2', system-ui, sans-serif;
+  --font-sans:     'Golos Text', system-ui, sans-serif;
+}
+
+/* =========================================================
+   БАЗА
+   ========================================================= */
+* { box-sizing: border-box; }
+
+html {
+  /* Плавный скролл делает Lenis; нативный отключён, иначе они конфликтуют */
+  scroll-behavior: auto;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Golos Text', system-ui, sans-serif;
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+h1, h2, h3, h4 {
+  font-family: 'Exo 2', system-ui, sans-serif;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+::selection { background: var(--blue); color: #fff; }
+
+:focus-visible {
+  outline: 2px solid var(--blue-2);
+  outline-offset: 3px;
+  border-radius: 6px;
+}
+
+/* Полоса прокрутки в тон интерфейсу */
+::-webkit-scrollbar { width: 10px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb {
+  background: rgba(94, 168, 255, 0.22);
+  border-radius: 10px;
+  border: 3px solid var(--bg);
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(94, 168, 255, 0.4); }
+
+/* =========================================================
+   УТИЛИТЫ
+   ========================================================= */
+.u-wrap { width: 100%; max-width: 1240px; margin: 0 auto; padding: 0 28px; }
+
+/* Стеклянная панель — базовый строительный блок интерфейса */
+/* Стекло с телом: под прозрачным слоем лежит тёмная подложка.
+   Без неё светящийся город просвечивает сквозь карточки и текст
+   становится нечитаемым — а размытия для этого недостаточно. */
+.u-glass {
+  background:
+    linear-gradient(160deg, var(--glass-2), var(--glass)),
+    rgba(7, 11, 21, 0.86);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+}
+
+.u-eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: 12px; font-weight: 600;
+  letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--blue-2);
+}
+
+/* Градиентный текст для ключевых слов */
+.u-grad {
+  background: linear-gradient(100deg, var(--ink) 0%, var(--blue-2) 55%, var(--cyan) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Свечение под акцентными элементами */
+.u-glow { box-shadow: 0 0 0 1px var(--line-2), 0 18px 60px -18px rgba(47, 123, 255, 0.55); }
+
+/* Скрыть визуально, оставив для скринридеров */
+.u-sr {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+
+/* =========================================================
+   ДОСТУПНОСТЬ: уважаем отключённую анимацию
+   ========================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =========================================================
+   3D-СЦЕНА — фиксированный фон под всем содержимым
+   ========================================================= */
+.scene-root {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  /* Градиент виден, пока Canvas ещё не смонтирован */
+  background:
+    radial-gradient(72% 52% at 50% 8%, rgba(47, 123, 255, 0.16) 0%, transparent 64%),
+    radial-gradient(56% 44% at 50% 100%, rgba(56, 224, 255, 0.09) 0%, transparent 60%),
+    var(--bg);
+}
+
+.scene-root canvas { display: block; }
+
+/* Затемнение по краям: держит взгляд в центре и добавляет объём */
+.scene-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(118% 82% at 50% 42%, transparent 46%, rgba(5, 7, 13, 0.82) 100%);
+}
+
+/* Содержимое лежит выше сцены */
+.page { position: relative; z-index: 1; }
+
+/* =========================================================
+   КНОПКИ
+   ========================================================= */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  min-height: 52px; padding: 15px 30px;
+  border-radius: 100px;
+  font-family: 'Golos Text', system-ui, sans-serif;
+  font-size: 15px; font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.28s var(--ease), background 0.28s var(--ease),
+              border-color 0.28s var(--ease), box-shadow 0.28s var(--ease);
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0); }
+
+.btn-solid {
+  background: linear-gradient(120deg, var(--blue), var(--blue-2));
+  color: #fff;
+  box-shadow: 0 14px 40px -14px rgba(47, 123, 255, 0.85);
+}
+.btn-solid:hover { box-shadow: 0 20px 52px -14px rgba(47, 123, 255, 1); }
+
+.btn-glass {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.btn-glass:hover { background: var(--glass-2); border-color: var(--line-2); }
+
+/* =========================================================
+   HERO
+   ========================================================= */
+.hero {
+  position: relative;
+  min-height: 100svh;
+  display: flex; align-items: center;
+  padding: calc(var(--nav-h) + 40px) 0 120px;
+}
+.hero-inner { display: flex; flex-direction: column; align-items: flex-start; }
+
+.hero-title {
+  font-size: clamp(64px, 15vw, 196px);
+  line-height: 0.88;
+  letter-spacing: -0.045em;
+  margin: 22px 0 0;
+}
+
+.hero-roles {
+  display: flex; flex-wrap: wrap; gap: 10px 12px;
+  margin-top: 26px;
+}
+.hero-roles li {
+  font-family: 'Exo 2', system-ui, sans-serif;
+  font-size: clamp(13px, 1.5vw, 15px); font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-2);
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 100px;
+  background: var(--glass);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.hero-tagline {
+  margin-top: 28px;
+  max-width: 34ch;
+  font-size: clamp(16px, 2vw, 19px);
+  color: var(--ink-2);
+}
+
+.hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 38px; }
+
+.hero-socials { display: flex; flex-wrap: wrap; gap: 26px; margin-top: 34px; }
+.social {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-size: 14px; font-weight: 500; color: var(--ink-3);
+  transition: color 0.25s var(--ease);
+}
+.social svg { width: 18px; height: 18px; }
+.social:hover { color: var(--blue-2); }
+
+.hero-scroll {
+  position: absolute; left: 50%; bottom: 40px;
+  transform: translateX(-50%);
+  display: inline-flex; flex-direction: column; align-items: center; gap: 10px;
+  font-size: 11px; font-weight: 600;
+  letter-spacing: 0.22em; text-transform: uppercase;
+  color: var(--ink-3);
+  transition: color 0.25s var(--ease);
+}
+.hero-scroll:hover { color: var(--blue-2); }
+.hero-scroll svg { width: 16px; height: 16px; animation: nudge 2.2s var(--ease) infinite; }
+
+@keyframes nudge {
+  0%, 100% { transform: translateY(0); opacity: 0.55; }
+  50%      { transform: translateY(7px); opacity: 1; }
+}
+
+@media (max-width: 640px) {
+  .hero-actions .btn { width: 100%; }
+  .hero-tagline { max-width: none; }
+}
+
+/* Затемнение под текстом первого экрана.
+   Без него подписи ложатся прямо на светящиеся окна и становятся нечитаемыми —
+   градиент гасит фон слева, где стоит текст, и отпускает справа, где виден город. */
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    rgba(5, 7, 13, 0.95) 0%,
+    rgba(5, 7, 13, 0.88) 30%,
+    rgba(5, 7, 13, 0.45) 56%,
+    rgba(5, 7, 13, 0.05) 78%,
+    transparent 100%
+  );
+}
+
+@media (max-width: 900px) {
+  /* На узком экране текст занимает всю ширину, поэтому гасим снизу вверх */
+  .hero::before {
+    background: linear-gradient(
+      180deg,
+      rgba(5, 7, 13, 0.55) 0%,
+      rgba(5, 7, 13, 0.9) 42%,
+      rgba(5, 7, 13, 0.96) 100%
+    );
+  }
+}
+
+/* =========================================================
+   НАВИГАЦИЯ
+   ========================================================= */
+.nav {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 60;
+  height: var(--nav-h);
+  display: flex; align-items: center;
+  transition: background 0.35s var(--ease), border-color 0.35s var(--ease),
+              backdrop-filter 0.35s var(--ease);
+  border-bottom: 1px solid transparent;
+}
+.nav.is-scrolled {
+  background: rgba(5, 7, 13, 0.72);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border-bottom-color: var(--line);
+}
+.nav-inner { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+
+.nav-brand {
+  font-family: 'Exo 2', system-ui, sans-serif;
+  font-size: 21px; font-weight: 700; letter-spacing: -0.02em;
+}
+.nav-brand span { color: var(--blue-2); }
+
+.nav-links { display: flex; align-items: center; gap: 30px; }
+.nav-links a {
+  font-size: 14.5px; font-weight: 500; color: var(--ink-2);
+  transition: color 0.25s var(--ease);
+}
+.nav-links a:hover { color: var(--ink); }
+.nav-cta {
+  padding: 10px 20px; border-radius: 100px;
+  border: 1px solid var(--line-2);
+  color: var(--ink) !important;
+  background: var(--glass);
+}
+.nav-cta:hover { background: var(--glass-2); }
+
+.nav-tools { display: flex; align-items: center; gap: 14px; }
+
+.lang { display: flex; gap: 2px; padding: 3px; border-radius: 100px; background: var(--glass); border: 1px solid var(--line); }
+.lang button {
+  min-width: 40px; padding: 7px 10px; border-radius: 100px;
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.08em;
+  color: var(--ink-3);
+  transition: color 0.25s var(--ease), background 0.25s var(--ease);
+}
+.lang button:hover { color: var(--ink-2); }
+.lang button.is-active { background: var(--blue); color: #fff; }
+
+.burger { display: none; width: 44px; height: 44px; align-items: center; justify-content: center; color: var(--ink); }
+.burger svg { width: 24px; height: 24px; }
+
+@media (max-width: 900px) {
+  .burger { display: inline-flex; }
+  .nav-links {
+    position: fixed; inset: var(--nav-h) 0 0;
+    flex-direction: column; align-items: flex-start; justify-content: center;
+    gap: 8px; padding: 0 28px;
+    background: rgba(5, 7, 13, 0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    transform: translateX(100%);
+    transition: transform 0.45s var(--ease);
+  }
+  .nav-links.is-open { transform: none; }
+  .nav-links a { font-size: 26px; font-family: 'Exo 2', sans-serif; font-weight: 600; padding: 12px 0; }
+  .nav-cta { margin-top: 18px; font-size: 16px !important; }
+}
+
+/* =========================================================
+   ОБЩЕЕ ДЛЯ СЕКЦИЙ
+   ========================================================= */
+.section { position: relative; padding: 130px 0; }
+.section-title {
+  font-size: clamp(30px, 4.6vw, 54px);
+  margin: 16px 0 0;
+  max-width: 18ch;
+}
+.section-lead {
+  margin-top: 18px; max-width: 52ch;
+  font-size: clamp(15px, 1.7vw, 18px); color: var(--ink-2);
+}
+
+/* =========================================================
+   ОБО МНЕ
+   ========================================================= */
+.about-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 26px 56px;
+  align-items: start; margin-top: 8px;
+}
+.about-text { display: flex; flex-direction: column; gap: 16px; color: var(--ink-2); font-size: 16.5px; }
+
+.facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 26px 30px; margin-top: 56px; padding: 32px 34px;
+}
+.facts li { display: flex; flex-direction: column; gap: 7px; }
+.facts-k {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.facts-v { font-size: 16px; font-weight: 500; color: var(--ink); }
+
+@media (max-width: 860px) { .about-grid { grid-template-columns: 1fr; } }
+
+/* =========================================================
+   НАВЫКИ
+   ========================================================= */
+.skills-group { margin-top: 54px; }
+.skills-group-title {
+  font-size: 13px; font-weight: 600; letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--ink-3);
+  font-family: 'Golos Text', sans-serif;
+  padding-bottom: 16px; border-bottom: 1px solid var(--line);
+}
+.skills-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 14px; margin-top: 24px;
+}
+.skill {
+  display: flex; align-items: center; gap: 14px;
+  padding: 17px 19px; border-radius: 16px;
+  background:
+    linear-gradient(160deg, var(--glass-2), var(--glass)),
+    rgba(7, 11, 21, 0.84);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition: transform 0.3s var(--ease), border-color 0.3s var(--ease),
+              box-shadow 0.3s var(--ease);
+}
+.skill:hover {
+  transform: translateY(-4px);
+  border-color: color-mix(in srgb, var(--tint) 55%, transparent);
+  box-shadow: 0 16px 40px -20px var(--tint);
+}
+.skill-icon {
+  display: grid; place-items: center;
+  width: 38px; height: 38px; flex: 0 0 38px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+  color: var(--tint);
+}
+.skill-icon svg { width: 20px; height: 20px; }
+.skill-name { font-size: 14.5px; font-weight: 500; }
+
+/* =========================================================
+   КАРТОЧКА С НАКЛОНОМ
+   ========================================================= */
+.tilt { position: relative; height: 100%; transform-style: preserve-3d; will-change: transform; }
+.tilt-glow {
+  position: absolute; width: 260px; height: 260px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%; pointer-events: none;
+  opacity: 0; transition: opacity 0.4s var(--ease);
+  z-index: 0;
+}
+.tilt:hover .tilt-glow { opacity: 1; }
+.tilt-body { position: relative; z-index: 1; height: 100%; }
+
+/* =========================================================
+   ПРОЕКТЫ
+   ========================================================= */
+.projects-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 22px; margin-top: 54px;
+}
+.projects-grid > li { min-width: 0; }
+.projects-grid > li > div { height: 100%; }
+
+.project-inner {
+  display: flex; flex-direction: column; gap: 14px; height: 100%;
+  padding: 30px 30px 26px;
+  border-radius: 22px;
+  background: linear-gradient(160deg, rgba(13, 20, 36, 0.94), rgba(7, 11, 21, 0.9));
+  border: 1px solid var(--line);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  overflow: hidden;
+  transition: border-color 0.35s var(--ease);
+}
+.tilt:hover .project-inner { border-color: var(--line-2); }
+
+.project-visual {
+  width: 76px; height: 76px;
+  display: grid; place-items: center;
+  border-radius: 18px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+}
+.glyph { width: 46px; height: 46px; }
+.glyph .g-a, .glyph .g-b, .glyph .g-c { transition: opacity 0.4s var(--ease), transform 0.55s var(--ease); transform-origin: 50% 50%; }
+.tilt:hover .glyph .g-b { transform: scale(1.06); }
+.tilt:hover .glyph .g-c { opacity: 0.55; transform: scale(1.12); }
+
+.project-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-top: 4px; }
+.project-tagline {
+  font-size: 11.5px; font-weight: 600; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--blue-2);
+}
+.project-year { font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+.project-title { font-size: 25px; }
+.project-desc { font-size: 15px; color: var(--ink-2); }
+
+.project-stack { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 2px; }
+.project-stack li {
+  font-size: 11.5px; font-weight: 500; color: var(--ink-3);
+  padding: 6px 11px; border-radius: 100px;
+  border: 1px solid var(--line); background: rgba(255, 255, 255, 0.03);
+}
+
+.project-action {
+  display: inline-flex; align-items: center; gap: 7px;
+  margin-top: auto; padding-top: 16px;
+  font-size: 13.5px; font-weight: 600; color: var(--ink-3);
+  transition: color 0.3s var(--ease);
+}
+.project-action svg { width: 15px; height: 15px; transition: transform 0.3s var(--ease); }
+.tilt:hover .project-action { color: var(--blue-2); }
+.tilt:hover .project-action svg { transform: translate(3px, -3px); }
+
+/* =========================================================
+   ПРОЦЕСС
+   ========================================================= */
+.process { margin-top: 54px; display: flex; flex-direction: column; }
+.process li {
+  display: flex; gap: 26px; padding: 26px 0;
+  border-top: 1px solid var(--line);
+}
+.process li:last-child { border-bottom: 1px solid var(--line); }
+.process-num {
+  font-family: 'Exo 2', sans-serif; font-size: 15px; font-weight: 700;
+  color: var(--blue-2); font-variant-numeric: tabular-nums;
+  padding-top: 3px; flex: 0 0 40px;
+}
+.process-body h3 { font-size: 21px; margin-bottom: 7px; }
+.process-body p { font-size: 15.5px; color: var(--ink-2); max-width: 62ch; }
+
+/* =========================================================
+   ФОРМА ЗАКАЗА
+   ========================================================= */
+.order { margin-top: 48px; padding: 40px; display: flex; flex-direction: column; gap: 22px; }
+.order-row { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+.field { display: flex; flex-direction: column; gap: 9px; }
+.field label {
+  display: flex; align-items: baseline; gap: 9px;
+  font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: var(--ink-2);
+}
+.field-hint { font-size: 11.5px; font-weight: 400; color: var(--ink-3); text-transform: lowercase; }
+
+.field input, .field textarea {
+  width: 100%;
+  min-height: 52px; padding: 14px 17px;
+  font: inherit; font-size: 15.5px; color: var(--ink);
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  transition: border-color 0.25s var(--ease), background 0.25s var(--ease);
+  resize: vertical;
+}
+.field input::placeholder, .field textarea::placeholder { color: var(--ink-3); }
+.field input:focus, .field textarea:focus {
+  outline: none;
+  border-color: var(--blue);
+  background: rgba(47, 123, 255, 0.07);
+}
+.field.has-error input, .field.has-error textarea { border-color: #FF6B6B; }
+.field-error { font-size: 13px; color: #FF8A8A; }
+
+.order-foot { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.order-foot .btn svg { width: 17px; height: 17px; }
+.order-foot .btn:disabled { opacity: 0.6; cursor: progress; }
+.order-status { font-size: 14px; color: var(--cyan); }
+
+@media (max-width: 720px) {
+  .order { padding: 26px; }
+  .order-row { grid-template-columns: 1fr; }
+  .order-foot .btn { width: 100%; }
+}
+
+/* =========================================================
+   КОНТАКТЫ И ПОДВАЛ
+   ========================================================= */
+.contacts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 14px; margin-top: 52px;
+}
+.contact {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+  padding: 20px 22px; height: 100%;
+  transition: border-color 0.3s var(--ease), transform 0.3s var(--ease);
+}
+.contact:hover { transform: translateY(-3px); border-color: var(--line-2); }
+.contact-main { display: flex; align-items: center; gap: 15px; min-width: 0; }
+.contact-icon {
+  display: grid; place-items: center;
+  width: 42px; height: 42px; flex: 0 0 42px;
+  border-radius: 13px;
+  background: rgba(47, 123, 255, 0.14); color: var(--blue-2);
+}
+.contact-icon svg { width: 20px; height: 20px; }
+.contact-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.contact-label {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--ink-3);
+}
+.contact-value {
+  font-size: 14.5px; color: var(--ink);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.contact-copy {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px; padding: 9px 13px; border-radius: 10px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink-3);
+  transition: color 0.25s var(--ease), background 0.25s var(--ease);
+  flex: 0 0 auto;
+}
+.contact-copy:hover { color: var(--ink); background: rgba(255, 255, 255, 0.05); }
+.contact-copy svg { width: 16px; height: 16px; }
+.contact-copy span { display: none; }
+@media (min-width: 480px) { .contact-copy span { display: inline; } }
+
+.footer {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+  margin-top: 72px; padding-top: 30px;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px; color: var(--ink-3);
+}
+
+@media (max-width: 720px) {
+  .section { padding: 96px 0; }
+  .u-wrap { padding: 0 22px; }
+}
+
+/* Вуаль над 3D-сценой для текстовых секций.
+   Город остаётся виден и продолжает движение по прокрутке, но уходит
+   на второй план: иначе светящиеся окна съедают контраст текста. */
+.content-veil {
+  position: relative;
+  background: linear-gradient(
+    180deg,
+    rgba(5, 7, 13, 0) 0%,
+    rgba(5, 7, 13, 0.86) 5%,
+    rgba(5, 7, 13, 0.88) 50%,
+    rgba(5, 7, 13, 0.94) 100%
+  );
+}

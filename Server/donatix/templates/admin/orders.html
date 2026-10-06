@@ -1,0 +1,22 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Заказы — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Заказы</h1></section>
+<form class="card" method="get"><div class="filters">
+  <div class="full"><input type="search" aria-label="Поиск" id="q" name="q" value="{{ q }}" placeholder="dx-…, ord-…, товар, клиент"></div>
+  <div><label class="label-caps" for="status">Статус</label>
+    <select id="status" name="status"><option value="">Все</option>
+      {% for s in ['attention', 'processing', 'completed', 'failed'] %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ status_titles[s] }}</option>{% endfor %}
+    </select></div>
+  {% include "_period_filter.html" %}
+  <div style="display:flex;align-items:end"><button class="btn block">Показать</button></div>
+</div></form>
+<div class="grid kpis period-kpis" style="margin-top:16px">
+  <div class="kpi"><div class="label">{{ pr.label }} · заказов</div><div class="value">{{ totals.n }}</div>
+    <div class="note">выполнено {{ totals.done }} · возвращено {{ totals.failed }}</div></div>
+  <div class="kpi"><div class="label">Продано на</div><div class="value">${{ fmt(totals.revenue) }}</div></div>
+  <div class="kpi"><div class="label">Прибыль</div><div class="value">${{ fmt(totals.profit) }}</div></div>
+</div>
+<div style="margin-top:16px">{% include "admin/_orders_table.html" %}
+  {% if totals.n > rows | length %}<p class="muted small" style="padding:10px 4px">Показаны последние {{ rows | length }} из {{ totals.n }} — итоги выше за весь период.</p>{% endif %}</div>
+{% endblock %}

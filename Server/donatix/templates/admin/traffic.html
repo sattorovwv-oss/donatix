@@ -1,0 +1,175 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Посещаемость — админка{% endblock %}
+{% macro num(n) %}{{ '{:,}'.format(n).replace(',', ' ') }}{% endmacro %}
+{% macro delta(d, invert=false) -%}
+  {%- if d and d.pct is not none -%}
+  {%- set good = (not d.up) if invert else d.up -%}
+  <span class="dlt {{ 'good' if good else 'bad' }}" title="К прошлому такому же периоду">{{ '▲' if d.up else '▼' }} {{ d.pct | abs }}%</span>
+  {%- elif d -%}<span class="dlt good" title="В прошлом периоде было 0">новое</span>{%- endif -%}
+{%- endmacro %}
+{% macro heat(hm, what) %}
+<div class="heat" role="table" aria-label="{{ what }} по дням недели и часам">
+  <div class="heat-row heat-hours" role="row"><span></span>{% for h in range(24) %}<span role="columnheader">{{ h if h % 3 == 0 else '' }}</span>{% endfor %}</div>
+  {% for row in hm.cells %}
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">{{ t.weekdays[loop.index0] }}</span>
+    {%- set d = loop.index0 -%}
+    {% for c in row %}<span role="cell" tabindex="0" class="hc l{{ c.lvl }}" data-tip="{{ t.weekdays[d] }}, {{ '%02d' | format(loop.index0) }}:00–{{ '%02d' | format(loop.index0) }}:59|{{ what }}: {{ c.n }}"></span>{% endfor %}
+  </div>
+  {% endfor %}
+  <div class="heat-legend"><span>меньше</span>{% for l in range(6) %}<i class="hc l{{ l }}"></i>{% endfor %}<span>больше</span></div>
+</div>
+{% endmacro %}
+{% macro toplist(rows, label_fn=None, empty='Пока нет данных') %}
+  {% for r in rows %}
+  <div class="tl-row" data-tip="{{ (label_fn(r.path) if label_fn else r.name) }}|{{ r.n }}{% if r.u is defined %} просм. · {{ r.u }} посет.{% endif %}">
+    <div class="tl-bar" style="--w: {{ r.share }}%"></div>
+    <span class="tl-name">{{ label_fn(r.path) if label_fn else r.name }}{% if r.src is defined and r.src %} <small class="muted">· {{ r.src }}</small>{% endif %}</span>
+    <b class="tl-n">{{ num(r.n) }}</b>
+  </div>
+  {% else %}<div class="empty small">{{ empty }}</div>{% endfor %}
+{% endmacro %}
+
+{% block content %}
+<section class="page-hero tr-hero">
+  <div>
+    <h1>Посещаемость</h1>
+    <p>Кто заходит на сайт, откуда, что смотрит и когда покупает</p>
+  </div>
+  <div class="online" role="status"><i></i>Сейчас на сайте: <b>{{ t.online }}</b></div>
+</section>
+
+<div class="periods" role="tablist" aria-label="Период">
+  {% for k, title in t.periods.items() %}<a role="tab" class="{{ 'on' if k == t.period }}" aria-selected="{{ 'true' if k == t.period else 'false' }}" href="/admin/traffic?period={{ k }}">{{ title }}</a>{% endfor %}
+</div>
+<p class="muted small tz">Время — по UTC{{ '%+d' | format(t.tz_hours) }}. Проценты — сравнение с прошлым таким же периодом. Админы не считаются.</p>
+
+{% set c, b = t.core, t.biz %}
+<div class="grid scards">
+  <div class="scard"><div class="label">Посетители</div><div class="value">{{ num(c.visitors) }}</div><div class="note">{{ delta(t.delta.visitors) }} новых {{ num(c.new_visitors) }}</div></div>
+  <div class="scard"><div class="label">Визиты</div><div class="value">{{ num(c.sessions) }}</div><div class="note">{{ delta(t.delta.sessions) }} заходов на сайт</div></div>
+  <div class="scard"><div class="label">Просмотры</div><div class="value">{{ num(c.views) }}</div><div class="note">{{ delta(t.delta.views) }} {{ c.pages_per_session }} стр. за визит</div></div>
+  <div class="scard"><div class="label">Время на сайте</div><div class="value">{{ duration(c.avg_duration) }}</div><div class="note">{{ delta(t.delta.avg_duration) }} в среднем за визит</div></div>
+  <div class="scard"><div class="label">Отказы</div><div class="value">{{ c.bounce }}%</div><div class="note">{{ delta(t.delta.bounce, true) }} ушли после 1 страницы</div></div>
+  <div class="scard"><div class="label">Регистрации</div><div class="value">{{ num(b.registrations) }}</div><div class="note">{{ delta(t.delta.registrations) }} конверсия {{ t.conversion }}%</div></div>
+  <div class="scard"><div class="label">Покупки</div><div class="value">{{ num(b.orders) }}</div><div class="note">{{ delta(t.delta.orders) }} покупателей {{ num(b.buyers) }}</div></div>
+  <div class="scard"><div class="label">Выручка</div><div class="value">{{ money(b.revenue) }}</div><div class="note">{{ delta(t.delta.revenue) }} выполненные заказы</div></div>
+</div>
+
+{% set vh, bh = t.visits_heat, t.buys_heat %}
+<div class="card insights">
+  <div class="card-head"><h3>{{ icon('bolt', 18) }}Главное за период</h3></div>
+  <div class="ins-grid">
+    <div class="ins"><span class="ins-label">Больше всего заходят</span>
+      {% if vh.best %}<b>{{ vh.best.day }}, {{ '%02d' | format(vh.best.hour) }}:00–{{ '%02d' | format((vh.best.hour + 1) % 24) }}:00</b>
+      <span class="muted small">Пиковый час в целом — {{ '%02d' | format(vh.top_hour) }}:00, день — {{ vh.top_day }}</span>{% else %}<b>—</b><span class="muted small">Данные появятся после первых заходов</span>{% endif %}</div>
+    <div class="ins"><span class="ins-label">Больше всего покупают</span>
+      {% if bh.best %}<b>{{ bh.best.day }}, {{ '%02d' | format(bh.best.hour) }}:00–{{ '%02d' | format((bh.best.hour + 1) % 24) }}:00</b>
+      <span class="muted small">Пиковый час в целом — {{ '%02d' | format(bh.top_hour) }}:00, день — {{ bh.top_day }}</span>{% else %}<b>—</b><span class="muted small">За период покупок нет</span>{% endif %}</div>
+    <div class="ins"><span class="ins-label">Когда запускать рекламу</span>
+      {% if vh.top_hour is not none %}<b>за 1–2 часа до {{ '%02d' | format(vh.top_hour) }}:00</b>
+      <span class="muted small">Чтобы объявление набрало показы к пику заходов</span>{% else %}<b>—</b><span class="muted small">Нужны данные о заходах</span>{% endif %}</div>
+    <div class="ins"><span class="ins-label">Главный источник</span>
+      {% if t.sources %}<b>{{ t.sources[0].name }}</b><span class="muted small">{{ t.sources[0].n }} визитов из {{ c.sessions }}</span>{% else %}<b>—</b><span class="muted small">Пока нет визитов</span>{% endif %}</div>
+  </div>
+</div>
+
+<div class="card chart-card">
+  <div class="card-head"><h3>Посетители {{ 'по часам' if t.hourly else 'по дням' }}</h3><span class="muted small">Наведите на столбик — подробности</span></div>
+  {% set peak = t.series | map(attribute='visitors') | max %}
+  <div class="vbars" style="--n: {{ t.series | length }}" role="img" aria-label="Посетители {{ 'по часам' if t.hourly else 'по дням' }}">
+    {% for s in t.series %}
+    <div class="vb" tabindex="0" data-tip="{{ s.full }}|Посетители: {{ s.visitors }}|Визиты: {{ s.sessions }}|Просмотры: {{ s.views }}|Покупки: {{ s.orders }}">
+      <span class="vb-bar" style="--h: {{ s.h }}%"></span>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="vbars-x" style="--n: {{ t.series | length }}">
+    {% set every = ((t.series | length) / 7) | round(0, 'ceil') | int %}
+    {% for s in t.series %}<span>{{ s.label if loop.index0 % (every or 1) == 0 else '' }}</span>{% endfor %}
+  </div>
+  <p class="muted small" style="margin:8px 0 0">Максимум за {{ 'час' if t.hourly else 'день' }}: <b>{{ peak or 0 }}</b> посетителей</p>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card">
+    <div class="card-head"><h3>Заходы по часам</h3><span class="muted small">Начало визита</span></div>
+    <div class="hbars">{% for h in t.hours %}<div class="hb" tabindex="0" data-tip="{{ '%02d' | format(h.h) }}:00–{{ '%02d' | format(h.h) }}:59|Визитов: {{ h.visits }}"><span style="--h: {{ h.vh }}%"></span></div>{% endfor %}</div>
+    <div class="hbars-x"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Покупки по часам</h3><span class="muted small">Выполненные заказы</span></div>
+    <div class="hbars buys">{% for h in t.hours %}<div class="hb" tabindex="0" data-tip="{{ '%02d' | format(h.h) }}:00–{{ '%02d' | format(h.h) }}:59|Покупок: {{ h.buys }}"><span style="--h: {{ h.bh }}%"></span></div>{% endfor %}</div>
+    <div class="hbars-x"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+  </div>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card"><div class="card-head"><h3>Когда заходят</h3><span class="muted small">День недели × час</span></div>{{ heat(vh, 'Визитов') }}</div>
+  <div class="card"><div class="card-head"><h3>Когда покупают</h3><span class="muted small">День недели × час</span></div>{{ heat(bh, 'Покупок') }}</div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Воронка</h3><span class="muted small">От захода на сайт до покупки</span></div>
+  <div class="funnel">
+    {% for f in t.funnel %}
+    <div class="fn-row">
+      <span class="fn-t">{{ f.t }}</span>
+      <div class="fn-track"><div class="fn-bar" style="--w: {{ [f.w, 1.5] | max if f.n else 0 }}%"></div></div>
+      <b class="fn-n">{{ num(f.n) }}</b>
+      <span class="fn-c muted small">{% if f.conv is not none %}{{ f.conv }}% от пред.{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card"><div class="card-head"><h3>Источники</h3><span class="muted small">Откуда пришли, визиты</span></div>{{ toplist(t.sources) }}</div>
+  <div class="card">
+    <div class="card-head"><h3>Рекламные кампании</h3><span class="muted small">По UTM-меткам</span></div>
+    {{ toplist(t.campaigns, empty='Кампаний пока нет — добавьте метку к ссылке в рекламе (пример ниже)') }}
+    <details class="utm-help"><summary>Как отметить ссылку в рекламе</summary>
+      <p class="small">Добавьте метку в конец ссылки — и здесь будет видно, сколько людей пришло именно с этой рекламы:</p>
+      <code class="utm-code">{{ base_url }}/?utm_source=instagram&amp;utm_campaign=oktyabr</code>
+      <p class="small muted">utm_source — где реклама (instagram, telegram, tiktok), utm_campaign — любое имя кампании латиницей.</p>
+    </details>
+  </div>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card"><div class="card-head"><h3>Популярные страницы</h3><span class="muted small">Просмотры</span></div>{{ toplist(t.pages, page_title) }}</div>
+  <div class="card"><div class="card-head"><h3>Страницы входа</h3><span class="muted small">С какой страницы начали визит</span></div>{{ toplist(t.entries, page_title) }}</div>
+</div>
+
+<div class="grid three tr-two">
+  <div class="card"><div class="card-head"><h3>Устройства</h3></div>{{ toplist(t.devices) }}</div>
+  <div class="card"><div class="card-head"><h3>Браузеры</h3></div>{{ toplist(t.browsers) }}</div>
+  <div class="card"><div class="card-head"><h3>Системы</h3></div>{{ toplist(t.systems) }}</div>
+</div>
+
+<div class="dx-tip" id="dx-tip" role="tooltip" hidden></div>
+<script>
+(function () {
+  const tip = document.getElementById("dx-tip");
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  function show(el, x, y) {
+    const [head, ...rows] = el.dataset.tip.split("|");
+    tip.innerHTML = "<b>" + esc(head) + "</b>" + rows.map(r => "<span>" + esc(r) + "</span>").join("");
+    tip.hidden = false;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x - w / 2)) + "px";
+    tip.style.top = Math.max(8, y - h - 14) + "px";
+  }
+  document.addEventListener("pointerover", e => {
+    const el = e.target.closest("[data-tip]"); if (!el) return;
+    const r = el.getBoundingClientRect(); show(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener("pointerout", e => { if (e.target.closest("[data-tip]")) tip.hidden = true; });
+  document.addEventListener("focusin", e => {
+    const el = e.target.closest("[data-tip]"); if (!el) return;
+    const r = el.getBoundingClientRect(); show(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener("focusout", () => { tip.hidden = true; });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Админка — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero dash-hero">
+  <h1>Сводка</h1>
+  <form method="post" action="/admin/sync"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <button class="btn">{{ icon('refresh', 18) }}Обновить каталог</button></form>
+</section>
+
+{% if counts.attention or counts.pending_payments or counts.pending_users %}
+<div class="todo">
+  {% if counts.attention %}<a class="todo-item bad" href="/admin/orders?status=attention">{{ icon('alert', 20) }}<span>Заказов, требующих внимания: {{ counts.attention }}</span>{{ icon('arrow-right', 18) }}</a>{% endif %}
+  {% if counts.pending_payments %}<a class="todo-item warn" href="/admin/payments">{{ icon('wallet', 20) }}<span>Заявок на пополнение: {{ counts.pending_payments }}</span>{{ icon('arrow-right', 18) }}</a>{% endif %}
+  {% if counts.pending_users %}<a class="todo-item warn" href="/admin/users?status=pending">{{ icon('users', 20) }}<span>Новых заявок: {{ counts.pending_users }}</span>{{ icon('arrow-right', 18) }}</a>{% endif %}
+</div>
+{% endif %}
+
+<div class="grid kpis">
+  <div class="kpi">
+    <span class="tile {{ 'bad' if supplier_balance is not none and supplier_balance < low else 'g2' }}">{{ icon('shield', 20) }}</span>
+    <div class="label">Баланс FazerCards</div>
+    <div class="value">{% if supplier_balance is not none %}${{ supplier_balance }}{% else %}—{% endif %}</div>
+    <div class="note">клиентам должны ${{ fmt(counts.client_balances) }}</div>
+    {% if supplier_balance_error %}<div class="note" style="color:var(--bad)">⚠️ {{ supplier_balance_error[:140] }}</div>{% endif %}
+    <form method="post" action="/admin/supplier-balance" style="margin-top:6px"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn sm">{{ icon('refresh', 14) }}Обновить сейчас</button></form>
+  </div>
+  {% for b in extra_balances %}
+  <div class="kpi">
+    <span class="tile {{ 'bad' if b.error }}">{{ icon('shield', 20) }}</span>
+    <div class="label">Баланс {{ b.name }}</div>
+    <div class="value">{% if b.balance is not none %}${{ b.balance }}{% else %}—{% endif %}</div>
+    {% if b.error %}<div class="note" style="color:var(--bad)">⚠️ {{ b.error[:120] }}</div>
+    {% else %}<div class="note">второй поставщик (игры по ID)</div>{% endif %}
+  </div>
+  {% endfor %}
+  <div class="kpi">
+    <span class="tile ok">{{ icon('chart', 20) }}</span>
+    <div class="label">Прибыль за 30 дней</div>
+    <div class="value">${{ fmt(month.profit) }}</div>
+    <div class="note">выручка ${{ fmt(month.revenue) }}</div>
+  </div>
+  <div class="kpi">
+    <span class="tile">{{ icon('bag', 20) }}</span>
+    <div class="label">Заказов сегодня <span class="muted small">с 00:00</span></div>
+    <div class="value">{{ today.orders }}</div>
+    <div class="note">прибыль ${{ fmt(today.profit) }} · в работе {{ counts.processing }}</div>
+  </div>
+  <a class="kpi" href="/admin/shopbot">
+    <span class="tile g2">{{ icon('zap-send', 20) }}</span>
+    <div class="label">Через бот-магазин <span class="muted small">сегодня</span></div>
+    <div class="value">{{ shop.orders }}</div>
+    <div class="note">выручка ${{ fmt(shop.revenue) }} · прибыль ${{ fmt(shop.profit) }}</div>
+  </a>
+  <div class="kpi">
+    <span class="tile g5">{{ icon('users', 20) }}</span>
+    <div class="label">Клиентов</div>
+    <div class="value">{{ counts.clients }}</div>
+    <div class="note">товаров {{ counts.products }} · каталог {{ (catalog_synced_at or 'не загружен')[5:16] | replace('T', ' ') }}</div>
+  </div>
+</div>
+
+<div class="grid dash-two">
+  <div class="card">
+    <div class="card-head"><h3>Выручка и прибыль, 14 дней</h3>
+      <span class="legend"><i class="rev"></i>выручка <i class="pro"></i>прибыль</span></div>
+    {% set peak = (days | map(attribute='revenue') | max) or 1 %}
+    <div class="chart" role="img" aria-label="Выручка и прибыль по дням">
+      {% for d in days %}
+      <div class="bar" style="--i: {{ loop.index0 }}" title="{{ d.day }}: выручка ${{ fmt(d.revenue) }}, прибыль ${{ fmt(d.profit) }}, заказов {{ d.orders }}">
+        <div class="stack" style="--h: {{ (d.revenue / peak * 100) | round(1) }}%">
+          <span class="pro" style="--p: {{ ((d.profit / d.revenue * 100) if d.revenue else 0) | round(1) }}%"></span>
+        </div>
+        <span class="day">{{ d.day[8:10] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Лучшие клиенты, 30 дней</h3></div>
+    <div class="list tight">
+      {% for c in top %}
+      <a class="person" href="/admin/users/{{ c.id }}">
+        <span class="avatar">{{ c.login[:2] | upper }}</span>
+        <span class="grow"><b>{{ c.login }}</b><span class="sub">{{ c.project or (c.n ~ ' заказов') }}</span></span>
+        <span class="amount">${{ fmt(c.revenue) }}</span>
+      </a>
+      {% else %}<div class="empty small">Пока нет продаж.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<div class="section-title"><h2>Последние заказы</h2><a class="btn sm" href="/admin/orders">Все заказы</a></div>
+<div>{% set rows = recent %}{% include "admin/_orders_table.html" %}</div>
+{% endblock %}

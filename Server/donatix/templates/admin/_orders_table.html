@@ -1,0 +1,19 @@
+{# Заказы карточками (как у поставщика): картинка игры, номер, сумма, «тип • игра • пакет • получатель», статус и дата. #}
+{% from "_icons.html" import media, kind_icon, status %}
+{% set short = {'topup': 'Пополнение', 'gift_card': 'Карта', 'game_key': 'Ключ', 'telegram_stars': 'Telegram', 'telegram_premium': 'Telegram', 'steam_topup': 'Steam', 'steam_gift': 'Steam гифт'} %}
+<div class="list order-cards">
+  {% for o in rows %}
+  {% set pack = o.product_name | pack_title(o.kind) %}
+  <a class="item order-card{{ ' attention' if o.status == 'attention' }}" href="/admin/orders/{{ o.id }}">
+    {% if o.image_url %}{{ media(o.image_url, o.game or o.product_name, o.kind, 'oc-img') }}{% else %}<span class="tile oc-img k-{{ o.kind }}">{{ kind_icon(o.kind, 26) }}</span>{% endif %}
+    <div class="grow">
+      <div class="head"><span class="title">{{ o.public_id }}</span><span class="amount">${{ fmt(o.total_micro) }}</span></div>
+      <div class="oc-who"><span class="oc-ids">{% if o.supplier_order_id %}<span class="mono">{{ o.supplier_order_id }}</span> · {% endif %}{% if o.login %}👤 {{ o.login }}{% endif %}</span>{% if o.status == 'completed' %}<span class="oc-profit">+${{ fmt(o.total_micro - o.cost_micro) }}</span>{% endif %}</div>
+      <div class="sub oc-line">{{ short.get(o.kind, kind_titles.get(o.kind, '')) }}{% if o.game and o.game not in pack %} • {{ o.game }}{% endif %} • {{ pack }}{% if o.recipient %} • {{ o.recipient }}{% endif %}</div>
+      <div class="meta">{{ status(o.status) }}<span class="pill">{{ o.created_at | dt }}</span>
+        {% if o.status == 'attention' %}<span class="badge bad oc-alert" title="{{ status_titles['attention'] }}">⚠️ Проверить</span>{% endif %}
+      </div>
+    </div>
+  </a>
+  {% else %}<div class="card empty">Заказов нет.</div>{% endfor %}
+</div>

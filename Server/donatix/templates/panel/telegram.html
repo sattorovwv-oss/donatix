@@ -1,0 +1,138 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon, kind_icon %}
+{% block title %}Telegram звёзды и Premium — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero tg-hero">
+  <h1>Telegram звёзды и Premium</h1>
+  <p class="muted">Звёзды и Premium-подписка на любой аккаунт по @username</p>
+</section>
+{% if error %}<div class="flash error" role="alert">{{ icon('alert', 20) }}<span>{{ error }}</span></div>{% endif %}
+
+<div class="card tg-tabs-card">
+  <div class="seg" role="tablist" aria-label="Что купить">
+    <a role="tab" class="{{ 'on' if tab == 'stars' }}" aria-selected="{{ 'true' if tab == 'stars' else 'false' }}"
+       href="/panel/catalog?kind=telegram" data-tab="stars">{{ icon('star', 18) }}Звёзды</a>
+    <a role="tab" class="{{ 'on' if tab == 'premium' }}" aria-selected="{{ 'true' if tab == 'premium' else 'false' }}"
+       href="/panel/catalog?kind=telegram&tab=premium" data-tab="premium">{{ kind_icon('telegram_premium', 18) }}Premium</a>
+  </div>
+</div>
+
+<form method="post" action="/panel/telegram" class="buy-grid" id="buy" data-tab="{{ tab }}">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="idem" value="{{ idem }}">
+  <input type="hidden" name="tab" value="{{ tab }}" id="tab-input">
+  <div class="buy-main">
+    <div class="card">
+      <div class="step-head"><span class="n">1</span><h3>Получатель</h3></div>
+      <label for="tg-user">Имя пользователя</label>
+      <input id="tg-user" name="field_telegram_username" required placeholder="@username" autocomplete="off"
+             autocapitalize="off" spellcheck="false" value="{{ form.get('telegram_username', '') }}">
+    </div>
+
+    <div class="card tab-pane" data-pane="stars" {{ 'hidden' if tab != 'stars' }}>
+      <div class="step-head"><span class="n">2</span><h3>Количество звёзд</h3></div>
+      {% if stars %}
+      <input type="hidden" name="product_id" value="{{ stars.product_id }}" {{ 'disabled' if tab != 'stars' }}>
+      <div class="packs">
+        {% for n in [50, 100, 250, 500, 1000, 2500, 5000, 10000] if stars.min_quantity <= n <= stars.max_quantity %}
+          <button type="button" class="pack" data-qty="{{ n }}"><b>{{ n }} {{ icon('star', 16) }}</b><span class="pack-price"></span></button>
+        {% endfor %}
+      </div>
+      <label for="quantity" style="margin-top:16px">Или своё количество</label>
+      <input id="quantity" name="quantity" type="number" inputmode="numeric" required {{ 'disabled' if tab != 'stars' }}
+             min="{{ stars.min_quantity }}" max="{{ stars.max_quantity }}" value="{{ form.get('quantity') or [stars.min_quantity, 100] | max }}">
+      <div class="hint">От {{ stars.min_quantity }} до {{ stars.max_quantity }} · {{ money(stars.price_usd | price(stars.unit)) }} за звезду</div>
+      {% else %}
+      <p class="muted">Звёзды сейчас недоступны.</p>
+      {% endif %}
+    </div>
+
+    <div class="card tab-pane" data-pane="premium" {{ 'hidden' if tab != 'premium' }}>
+      <div class="step-head"><span class="n">2</span><h3>Выберите план</h3></div>
+      <div class="tg-plans" role="radiogroup" aria-label="План Premium">
+        {% for pl in plans %}
+        <label class="tg-plan">
+          <input type="radio" name="product_id" value="{{ pl.product_id }}" data-price="{{ pl.price_usd }}"
+                 {{ 'checked' if (form.get('product_id') == pl.product_id) or (not form.get('product_id') and loop.first) }}
+                 {{ 'disabled' if tab != 'premium' }}>
+          <span class="tp-name">{{ pl.plan_title }}</span>
+          <span class="tp-sub">Premium</span>
+          <span class="tp-price">{{ money(pl.price_usd | price) }}</span>
+        </label>
+        {% else %}
+        <p class="muted">Premium сейчас недоступен.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <aside class="buy-side">
+    <div class="card">
+      <h3>Сводка</h3>
+      <div class="summary">
+        <div><span>Получатель</span><span id="s-to" class="wrap-text">—</span></div>
+        <div><span>Товар</span><span id="s-what" class="wrap-text">—</span></div>
+        {% if not user.guest %}<div><span>Ваш баланс</span><span>{{ money(user.balance_micro) }}</span></div>{% endif %}
+        <div class="total"><span>К оплате</span><span id="s-total">—</span></div>
+      </div>
+      {% if user.guest %}<a class="btn primary lg block buy-btn" href="/register?next={{ (request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) | urlencode }}">Зарегистрироваться и купить</a>{% else %}<button class="btn primary lg block buy-btn" {{ 'disabled' if user.status != 'active' }}>Купить</button>{% endif %}
+      <p class="hint center">{{ icon('shield', 16) }} Не выполнится — деньги вернутся на баланс.</p>
+    </div>
+  </aside>
+
+  <div class="buy-bar" aria-hidden="true">
+    <div><span class="muted small">К оплате</span><b id="bar-total">—</b></div>
+    {% if user.guest %}<a class="btn primary lg" href="/register?next={{ (request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) | urlencode }}">Купить</a>{% else %}<button type="submit" class="btn primary lg" tabindex="-1" {{ 'disabled' if user.status != 'active' }}>Купить</button>{% endif %}
+  </div>
+</form>
+
+<script>
+(function () {
+  const form = document.getElementById("buy");
+  const starPrice = {{ (stars.price_usd if stars else '0') | tojson }};
+  const unit = parseFloat(starPrice);
+  const qty = document.getElementById("quantity");
+  const packs = form.querySelectorAll(".pack");
+  const money = v => dxMoney(Math.ceil(v * 10000 - 1e-6) / 10000);
+  packs.forEach(b => { b.querySelector(".pack-price").textContent = money(unit * +b.dataset.qty); });
+  let tab = form.dataset.tab;
+  function setTab(t) {
+    tab = t;
+    form.dataset.tab = t;
+    document.getElementById("tab-input").value = t;
+    document.querySelectorAll(".seg a").forEach(a => { const on = a.dataset.tab === t; a.classList.toggle("on", on); a.setAttribute("aria-selected", on); });
+    form.querySelectorAll(".tab-pane").forEach(p => {
+      const on = p.dataset.pane === t;
+      p.hidden = !on;
+      p.querySelectorAll("input").forEach(i => { i.disabled = !on; });
+    });
+    history.replaceState(null, "", "/panel/catalog?kind=telegram" + (t === "premium" ? "&tab=premium" : ""));
+    upd();
+  }
+  function upd() {
+    const who = document.getElementById("tg-user").value.trim();
+    document.getElementById("s-to").textContent = who || "—";
+    let what = "—", total = null;
+    if (tab === "stars" && qty) {
+      const n = parseInt(qty.value || "0", 10) || 0;
+      what = n + " звёзд"; total = unit * n;
+      packs.forEach(b => b.classList.toggle("on", +b.dataset.qty === n));
+    } else {
+      const r = form.querySelector(".tg-plan input:checked");
+      if (r) { what = "Premium · " + r.closest(".tg-plan").querySelector(".tp-name").textContent; total = parseFloat(r.dataset.price); }
+      form.querySelectorAll(".tg-plan").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+    }
+    document.getElementById("s-what").textContent = what;
+    const t = total === null ? "—" : money(total);
+    document.getElementById("s-total").textContent = t;
+    document.getElementById("bar-total").textContent = t;
+  }
+  document.querySelectorAll(".seg a").forEach(a => a.addEventListener("click", e => { e.preventDefault(); setTab(a.dataset.tab); }));
+  packs.forEach(b => b.addEventListener("click", () => { qty.value = b.dataset.qty; upd(); }));
+  form.addEventListener("input", upd);
+  form.addEventListener("change", upd);
+  form.addEventListener("submit", () => { form.querySelectorAll("button.primary").forEach(b => { b.disabled = true; b.textContent = "Отправляем…"; }); });
+  upd();
+})();
+</script>
+{% endblock %}

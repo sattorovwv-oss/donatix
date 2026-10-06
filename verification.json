@@ -1,0 +1,16 @@
+{
+  "date": "2026-10-06",
+  "app_version": "1.0.0+2",
+  "dart": "3.9.0",
+  "flutter_source": "3.35.4",
+  "dart_analysis": "No issues found",
+  "server_regression_tests": 74,
+  "android_apk_built": false,
+  "android_aab_built": false,
+  "device_acceptance": false,
+  "live_supplier_acceptance": false,
+  "google_live_acceptance": false,
+  "play_release_ready": false,
+  "original_http_routes": 121,
+  "limitations_file": "RELEASE_STATUS.md"
+}

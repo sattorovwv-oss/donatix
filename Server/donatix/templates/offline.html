@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Нет связи — {{ site_name }}{% endblock %}
+{% block header %}{% endblock %}
+{% block body %}
+<main class="offline">
+  <img src="/static/app/icon-192.png" width="72" height="72" alt="">
+  <h1>Нет интернета</h1>
+  <p class="muted">Проверьте связь — и нажмите «Обновить». Баланс и заказы в сохранности.</p>
+  <button class="btn primary lg" type="button" onclick="location.reload()">Обновить</button>
+</main>
+{% endblock %}

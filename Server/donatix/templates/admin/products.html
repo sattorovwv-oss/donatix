@@ -1,0 +1,27 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Каталог — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Каталог</h1><p>Закупочные цены у поставщика и цены для клиентов по уровням. Скрытые товары клиенты не видят.</p></section>
+<form class="card" method="get"><div class="filters">
+  <div class="full"><input type="search" aria-label="Поиск" placeholder="Поиск по каталогу" id="q" name="q" value="{{ q }}"></div>
+  <div><label class="label-caps" for="kind">Раздел</label>
+    <select id="kind" name="kind"><option value="">Все</option>
+      {% for k in kinds %}<option value="{{ k }}" {{ 'selected' if k == kind }}>{{ kind_titles[k] }}</option>{% endfor %}
+    </select></div>
+  <div style="display:flex;align-items:end"><button class="btn block">Показать</button></div>
+</div></form>
+<div class="card table-wrap" style="margin-top:16px"><table>
+  <tr><th>Товар</th><th>ID</th><th class="num">Закупка</th>
+    {% for t, m in markups.items() %}<th class="num">{{ t }} +{{ m }}%</th>{% endfor %}<th></th></tr>
+  {% for p in items %}
+  <tr style="{{ 'opacity:.5' if p.hidden }}">
+    <td>{{ p.category_name }} — {{ p.name }}{% if p.unit == 'star' %} <span class="small muted">за звезду</span>{% endif %}</td>
+    <td class="mono small">{{ p.id }}</td>
+    <td class="num">${{ p.base_price }}</td>
+    {% for t in markups %}<td class="num">${{ p.prices[t] }}</td>{% endfor %}
+    <td><form class="inline" method="post" action="/admin/products/{{ p.id }}/toggle"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn sm">{{ 'Показать' if p.hidden else 'Скрыть' }}</button></form></td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">Каталог пуст. Нажмите «Обновить сейчас» на сводке.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

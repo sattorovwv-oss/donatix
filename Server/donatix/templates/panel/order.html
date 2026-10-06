@@ -1,0 +1,47 @@
+{% extends "panel/_layout.html" %}
+{% block title %}{{ view.order_id }} — {{ site_name }}{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon, kind_icon, status %}
+{% set st = view.status %}
+{% if st == 'processing' %}<meta http-equiv="refresh" content="5">{% endif %}
+<section class="page-hero">
+  <a class="back" href="/panel/orders">{{ icon('arrow-left', 18) }}Все заказы</a>
+  <h1>Заказ {{ view.order_id }}</h1>
+  <p style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">{{ status(st) }}<span class="badge {{ {'completed': 'ok', 'failed': 'bad', 'processing': 'warn'}[st] }}">{{ status_titles[st] }}</span></p>
+</section>
+<div class="grid two" style="align-items:start">
+  <div class="summary card" style="padding:0">
+    <div><span class="muted">Товар</span><span>{{ view.product_name | pack_title(view.kind) }}</span></div>
+    {% for k, v in view.fields.items() %}<div><span class="muted">{{ k }}</span><span class="mono">{{ v }}</span></div>{% endfor %}
+    <div><span class="muted">Количество</span><span>{{ view.quantity }}</span></div>
+    <div><span class="muted">Цена за единицу</span><span>{{ money(view.unit_price_usd) }}</span></div>
+    <div><span class="muted">Создан</span><span>{{ view.created_at | dt('%d.%m.%Y %H:%M:%S') }}</span></div>
+    <div class="total"><span>Сумма</span><span>{{ money(view.total_usd) }}</span></div>
+  </div>
+  <div class="card reveal">
+    {% if st == 'processing' %}
+      <h3>Выполняется…</h3>
+      {% if delivery_note %}<p class="muted">{{ delivery_note }} Страница обновится сама.</p>
+      {% else %}<p class="muted">Обычно это занимает несколько секунд. Страница обновится сама.</p>{% endif %}
+    {% elif st == 'failed' %}
+      <h3>Заказ не выполнен</h3>
+      <p>{{ view.error or 'Поставщик отклонил заказ.' }}</p>
+      <p class="muted">{{ money(view.total_usd) }} вернулись на баланс.</p>
+    {% else %}
+      <h3>Готово</h3>
+      {% set d = view.delivery or {} %}
+      {% set codes = d.get('codes') or d.get('keys') or [] %}
+      {% if codes %}
+        <p class="muted">{{ 'Ключи' if view.kind == 'game_key' else 'Коды' }}:</p>
+        {% for c in codes %}<pre class="keybox">{{ (c.get('key') or c.get('code') or c) if c is mapping else c }}</pre>{% endfor %}
+      {% elif d.message %}
+        <p>{{ d.message }}</p>
+      {% elif view.delivery %}
+        <pre class="keybox">{{ delivery_pretty }}</pre>
+      {% else %}
+        <p>Заказ выполнен.</p>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

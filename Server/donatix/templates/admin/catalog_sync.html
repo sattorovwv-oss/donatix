@@ -1,0 +1,92 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Загрузка каталога — админка{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Загрузка каталога</h1>
+  <p>Товары, цены и картинки от FazerCards. Идёт в фоне — сайт в это время работает как обычно.</p>
+</section>
+
+<div class="grid kpis">
+  <div class="kpi"><span class="tile">{{ icon('grid', 20) }}</span><div class="label">Товаров</div><div class="value">{{ counts.products }}</div>
+    <div class="note">обновлён {{ (synced_at or 'ещё не загружали')[:16] | replace('T', ' ') }}</div></div>
+  <div class="kpi"><span class="tile g5">{{ icon('bolt', 20) }}</span><div class="label">Игр и сервисов</div><div class="value">{{ counts.categories }}</div></div>
+  <div class="kpi"><span class="tile ok">{{ icon('card', 20) }}</span><div class="label">Картинок на сервере</div>
+    <div class="value" id="k-local">{{ job.images_local }}</div><div class="note">из {{ counts.images }} у поставщика</div></div>
+</div>
+
+<form class="sync-actions" method="post" action="/admin/catalog-sync/start">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button class="sync-btn main" name="mode" value="all" {{ 'disabled' if job.running }}>
+    <span class="tile">{{ icon('refresh', 22) }}</span>
+    <span><b>Обновить всё</b><span class="sub">Каталог, цены и все картинки</span></span></button>
+  <button class="sync-btn" name="mode" value="catalog" {{ 'disabled' if job.running }}>
+    <span class="tile g2">{{ icon('grid', 22) }}</span>
+    <span><b>Только каталог</b><span class="sub">Товары и цены</span></span></button>
+  <button class="sync-btn" name="mode" value="images" {{ 'disabled' if job.running }}>
+    <span class="tile ok">{{ icon('card', 22) }}</span>
+    <span><b>Только картинки</b><span class="sub">Скачать недостающие</span></span></button>
+  {% for prov in providers %}
+  <button class="sync-btn" name="mode" value="provider:{{ prov.name }}" {{ 'disabled' if job.running }}>
+    <span class="tile g5">{{ icon('zap-send', 22) }}</span>
+    <span><b>Только {{ prov.name }}</b><span class="sub">Игры второго поставщика, FazerCards не трогаем</span></span></button>
+  {% endfor %}
+</form>
+
+<div class="card job-card" id="job" data-running="{{ 'true' if job.running else 'false' }}">
+  <div class="card-head">
+    <h3>Ход загрузки</h3>
+    <span class="badge" id="j-badge">—</span>
+  </div>
+  <div class="job-stage" id="j-stage">Ещё не запускали.</div>
+  <div class="progress" id="j-bar"><span></span></div>
+  <div class="job-nums">
+    <div><span>Товаров</span><b id="j-products">0</b></div>
+    <div><span>Картинок</span><b id="j-images">0 / 0</b></div>
+    <div><span>Ошибок</span><b id="j-failed">0</b></div>
+    <div><span>Время</span><b id="j-time">0 с</b></div>
+  </div>
+  <pre class="job-log" id="j-log" aria-live="polite"></pre>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  var STAGES = { start: "Запускаю…", catalog: "Загружаю каталог у поставщика", images: "Скачиваю картинки",
+                 done: "Готово", error: "Ошибка" };
+  var timer = null;
+  function render(s) {
+    var running = !!s.running;
+    document.querySelectorAll(".sync-btn").forEach(function (b) { b.disabled = running; });
+    var badge = $("j-badge");
+    badge.className = "badge " + (running ? "warn" : s.stage === "error" ? "bad" : s.stage === "done" ? "ok" : "");
+    badge.textContent = running ? "идёт" : s.stage === "error" ? "ошибка" : s.stage === "done" ? "готово" : "ожидание";
+    var stage = STAGES[s.stage] || "Ещё не запускали.";
+    if (s.stage === "catalog" && s.category) stage += " · " + s.category;
+    if (s.stage === "error") stage += ": " + (s.error || "");
+    $("j-stage").textContent = stage;
+    var bar = $("j-bar");
+    bar.classList.toggle("indet", running && s.stage !== "images");
+    var pct = s.stage === "images" && s.images_total ? Math.round(s.images_done / s.images_total * 100)
+            : s.stage === "done" ? 100 : 0;
+    bar.firstElementChild.style.width = (running && s.stage !== "images" ? 35 : pct) + "%";
+    $("j-products").textContent = s.products || (s.result ? s.result.products : 0) || 0;
+    $("j-images").textContent = (s.images_done || 0) + " / " + (s.images_total || 0);
+    $("j-failed").textContent = s.images_failed || 0;
+    $("j-time").textContent = (s.seconds || 0) + " с";
+    $("k-local").textContent = s.images_local;
+    var log = $("j-log");
+    log.textContent = (s.log || []).join("\n");
+    log.hidden = !(s.log || []).length;
+    log.scrollTop = log.scrollHeight;
+    clearTimeout(timer);
+    if (running) timer = setTimeout(poll, 1500);
+  }
+  function poll() {
+    fetch("/admin/catalog-sync/status", { cache: "no-store" }).then(function (r) { return r.json(); })
+      .then(render).catch(function () { timer = setTimeout(poll, 4000); });
+  }
+  render({{ job | tojson }});
+})();
+</script>
+{% endblock %}

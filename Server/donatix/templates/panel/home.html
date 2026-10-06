@@ -1,0 +1,146 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon, kind_icon, media %}
+{% block title %}Профиль — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="profile-hero hide-app">
+  <h1>Профиль</h1>
+  <p>Баланс, заказы и API в одном месте.</p>
+</section>
+<div class="app-hello only-app">Салом, <b>{{ user.login }}</b> 👋</div>
+<div class="install-app install-card" role="region" aria-label="Приложение">
+  <span style="font-size:1.6rem">📲</span>
+  <span class="grow"><b>Приложение Donatix</b><small>Покупки в одно касание и уведомления о заказах</small></span>
+  <button class="btn sm" type="button" data-install>Установить</button>
+</div>
+
+<div class="bal-hero">
+  <div class="bal-amount">{{ money(user.balance_micro) }}</div>
+  <div class="bal-sub">Доступно</div>
+  <a class="btn primary block bal-btn" href="/panel/balance">Пополнить</a>
+  <div class="bal-tiles">
+    <div class="bal-tile"><div class="t-label">Потрачено</div><div class="t-value">{{ money(summary.spent) }}</div><div class="t-note">на выполненные заказы</div></div>
+    <a class="bal-tile" href="/panel/orders"><div class="t-label">Выполнено заказов</div><div class="t-value">{{ summary.n }}</div><div class="t-note">из {{ orders_all }} всего</div></a>
+  </div>
+</div>
+
+{% if popular %}
+<section class="pop-quick" aria-label="Популярное">
+  <h3>Купить быстро</h3>
+  <div class="pop-row">
+    {% for s in popular[:8] %}
+    <a class="pop-tile" href="{{ s.href }}">
+      {% if s.image_url %}{{ media(s.image_url, s.title, s.kind, 'pop-tile-img') }}{% else %}<span class="tile pop-tile-img k-{{ s.kind }}">{{ kind_icon(s.kind, 20) }}</span>{% endif %}
+      <span>{{ s.title }}</span></a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if dc %}
+<a class="dc-card" href="/panel/dcoin">
+  <span class="dc-card-coin">D</span>
+  <span class="grow"><b>{{ dc.balance_text }} D</b><small>≈ {{ money(dc.worth_micro) }} · 1 D = {{ dprice(dc.price) }}</small></span>
+  <span class="dc-chg {{ 'up' if dc.change >= 0 else 'down' }}">{{ '+' if dc.change >= 0 }}{{ dc.change }}%</span>
+  {{ icon('chevron', 18) }}
+</a>
+{% endif %}
+{% set ref_href = "/panel/referrals" %}{% include "_ref_promo.html" %}
+
+<div class="card quick">
+  <div class="who-row">
+    <span class="avatar">{{ user.login[:2] | upper }}</span>
+    <div class="who"><b>{{ user.login }}</b><span class="muted">{{ user.email }}</span></div>
+  </div>
+  <h3 class="quick-title">Быстрые действия</h3>
+  <p class="quick-sub">Заказы, движения и поддержка</p>
+  <a class="qrow" href="/panel/orders"><span><b>Заказы</b><small>История и статусы</small></span>{{ icon('chevron', 16) }}</a>
+  <a class="qrow" href="/panel/transactions"><span><b>Транзакции</b><small>Все движения баланса</small></span>{{ icon('chevron', 16) }}</a>
+  <a class="qrow" href="/panel/stats"><span><b>Аналитика</b><small>Расходы и заказы по дням</small></span>{{ icon('chevron', 16) }}</a>
+  {% if support_contact %}
+  <a class="qrow" href="{{ 'https://t.me/' ~ support_contact[1:] if support_contact.startswith('@') else support_contact }}" target="_blank" rel="noopener"><span><b>Поддержка</b><small>Написать в Telegram</small></span>{{ icon('chevron', 16) }}</a>
+  {% endif %}
+  <a class="qrow" href="/panel/logins"><span><b>История входов</b><small>Данные и безопасность</small></span>{{ icon('chevron', 16) }}</a>
+</div>
+
+<div class="tier-card {{ 'ok' if user.status == 'active' else 'wait' }}">
+  <div class="label-caps">Уровень</div>
+  <div class="tier-name">{{ user.tier | capitalize }}</div>
+  <div class="tier-row">
+    <span class="tier-status">
+      <span class="status {{ 'completed' if user.status == 'active' else 'processing' }}">{{ icon('check' if user.status == 'active' else 'clock', 14) }}</span>
+      <span><b>{{ 'Активен' if user.status == 'active' else status_titles[user.status] }}</b>
+        <span class="sub">Наценка к цене поставщика: {{ markup }}%</span></span>
+    </span>
+  </div>
+</div>
+
+<div class="label-caps section-label">Аккаунт</div>
+<div class="list">
+  <div class="kv"><span class="k">Email</span><span class="v">{{ user.email }}</span></div>
+  <div class="kv"><span class="k">Валюта счёта</span><span class="v">USD</span></div>
+  <div class="kv"><span class="k">Регистрация</span><span class="v mono">{{ user.created_at | dt }}</span></div>
+  <form class="kv tz-row" method="post" action="/panel/timezone">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <span class="k">Часовой пояс</span>
+    <span class="v"><select name="tz" aria-label="Часовой пояс" onchange="this.form.submit()">
+      <option value="auto" {{ 'selected' if tz_choice == 'auto' }}>Автоматически — {{ tz_label if tz_choice == 'auto' else 'по устройству' }}</option>
+      {% for z, title in tz_zones %}<option value="{{ z }}" {{ 'selected' if tz_choice == z }}>{{ title }}</option>{% endfor %}
+    </select><noscript><button class="btn sm">Сохранить</button></noscript>
+    <span class="muted small tz-now">Сейчас у вас: <b>{{ now_utc | dt('%H:%M') }}</b></span></span>
+  </form>
+  {% if user.project %}<div class="kv"><span class="k">Проект</span><span class="v">{{ user.project }}</span></div>{% endif %}
+</div>
+
+<div class="card key-card">
+  <h3>API ключ</h3>
+  <p class="muted">Ключ для подключения бота или сайта.</p>
+  {% if key %}
+  <button type="button" class="key-eye" id="key-eye" data-id="{{ key.id }}" aria-label="Показать ключ">
+    {{ icon('eye', 22) }}<span class="tip">Показать ключ</span></button>
+  <div class="key-box"><code id="key-val" class="mono">•••••••••••</code>
+    <button type="button" class="icon-btn" id="key-copy" aria-label="Скопировать" hidden>{{ icon('copy', 18) }}</button></div>
+  <div class="hint" id="key-hint">{% if key.last_used_at %}Последнее использование: {{ key.last_used_at | dt }}.{% else %}Ещё не использовался.{% endif %}</div>
+  <div class="key-actions">
+    <a class="btn" href="/panel/api">{{ icon('key', 18) }}Управление ключами</a>
+  </div>
+  {% elif user.status == 'active' %}
+  <form method="post" action="/panel/api/keys" class="key-actions">
+    <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="name" value="Основной">
+    <button class="btn primary">{{ icon('plus', 18) }}Создать ключ</button>
+  </form>
+  {% else %}
+  <p class="hint">Ключ можно создать после активации аккаунта.</p>
+  {% endif %}
+
+  <div class="docs-callout">
+    <h3>Документация API</h3>
+    <p class="muted">Методы, примеры запросов и Swagger.</p>
+    <a class="btn" href="/docs">Открыть документацию</a>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var eye = document.getElementById("key-eye"), val = document.getElementById("key-val"),
+        copy = document.getElementById("key-copy"), hint = document.getElementById("key-hint"), shown = null;
+    if (!eye) return;
+    var MASK = "•••••••••••";
+    eye.addEventListener("click", async function () {
+      var tip = eye.querySelector(".tip");
+      if (shown) { val.textContent = MASK; copy.hidden = true; shown = null; eye.classList.remove("on"); tip.textContent = "Показать ключ"; return; }
+      var body = new FormData(); body.append("csrf", "{{ csrf }}");
+      eye.disabled = true;
+      try {
+        var r = await fetch("/panel/api/keys/" + eye.dataset.id + "/reveal", { method: "POST", body: body });
+        var d = await r.json();
+        if (d.ok) { shown = d.key; val.textContent = d.key; copy.hidden = false; eye.classList.add("on"); tip.textContent = "Скрыть ключ"; }
+        else hint.textContent = d.error;
+      } catch (e) { hint.textContent = "Нет связи, попробуйте ещё раз."; }
+      eye.disabled = false;
+    });
+    copy.addEventListener("click", function () {
+      if (shown && navigator.clipboard) navigator.clipboard.writeText(shown).then(function () { hint.textContent = "Ключ скопирован."; });
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alijon Mahmadjonov — 3D: путь в коде</title>
+<meta name="description" content="Интерактивная 3D-история о пути в программировании: от первой строки Python до Telegram-ботов. Alijon Mahmadjonov, Душанбе.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="3d.css">
+</head>
+<body>
+
+<a href="#story" class="skip-link">Перейти к содержанию</a>
+
+<!-- ===== 3D STAGE ===== -->
+<div class="stage" aria-hidden="true">
+  <canvas id="gl"></canvas>
+  <div class="stage-fallback" id="fallback"></div>
+  <div class="stage-vignette"></div>
+  <div class="stage-grain"></div>
+</div>
+
+<!-- ===== NAV ===== -->
+<header class="nav">
+  <a href="index.html" class="brand">Alijon<span>.</span></a>
+  <a href="index.html" class="nav-back">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+    <span>На сайт</span>
+  </a>
+</header>
+
+<!-- ===== CHAPTER RAIL ===== -->
+<nav class="rail" aria-label="Главы">
+  <ol>
+    <li><a href="#ch1" data-rail="1"><i></i><span>Начало</span></a></li>
+    <li><a href="#ch2" data-rail="2"><i></i><span>Основа</span></a></li>
+    <li><a href="#ch3" data-rail="3"><i></i><span>Практика</span></a></li>
+    <li><a href="#ch4" data-rail="4"><i></i><span>Связь</span></a></li>
+  </ol>
+</nav>
+
+<main id="story">
+
+  <!-- ===== HERO ===== -->
+  <section class="panel panel-hero" id="ch1">
+    <div class="panel-inner">
+      <p class="eyebrow">Интерактивная история · прокрути вниз</p>
+      <h1>Путь<br>в коде</h1>
+      <p class="lede">Четыре главы о том, как из одной точки собирается разработчик. Двигай страницу — форма меняется вместе с историей.</p>
+      <div class="hero-hint">
+        <span>Прокрути</span>
+        <i></i>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== CHAPTER 1 ===== -->
+  <section class="panel" data-chapter="1">
+    <div class="panel-inner card">
+      <span class="tag">01 — Начало</span>
+      <h2>Всё началось с одной точки.</h2>
+      <p>2025 год. Я впервые открыл редактор кода и не понимал почти ничего. Но точка была поставлена — и из неё выросло всё остальное.</p>
+      <ul class="meta">
+        <li><span class="k">Год</span><span class="v">2025</span></li>
+        <li><span class="k">Город</span><span class="v">Душанбе</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== CHAPTER 2 ===== -->
+  <section class="panel panel-right" id="ch2" data-chapter="2">
+    <div class="panel-inner card">
+      <span class="tag">02 — Основа</span>
+      <h2>Python дал <em>структуру</em>.</h2>
+      <p>Переменные, циклы, функции, работа с данными. То, что казалось хаосом, сложилось в систему — и я понял, что это моё всерьёз.</p>
+      <ul class="meta">
+        <li><span class="k">Язык</span><span class="v">Python</span></li>
+        <li><span class="k">Статус</span><span class="v">фундамент</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== CHAPTER 3 ===== -->
+  <section class="panel" id="ch3" data-chapter="3">
+    <div class="panel-inner card">
+      <span class="tag">03 — Практика</span>
+      <h2>Рост идёт по спирали.</h2>
+      <p>Код каждый день: ошибка, разбор, понимание — и снова с начала, но уровнем выше. Настоящий навык растёт только так.</p>
+      <ul class="meta">
+        <li><span class="k">Режим</span><span class="v">24/7</span></li>
+        <li><span class="k">Метод</span><span class="v">разбор ошибок</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== CHAPTER 4 ===== -->
+  <section class="panel panel-right" id="ch4" data-chapter="4">
+    <div class="panel-inner card">
+      <span class="tag">04 — Связь</span>
+      <h2>Боты, которые <em>отвечают</em>.</h2>
+      <p>aiogram, команды, кнопки, сценарии диалога. Код, написанный в Душанбе, отвечает людям где угодно — границ у него нет.</p>
+      <ul class="meta">
+        <li><span class="k">Стек</span><span class="v">aiogram · Bot API</span></li>
+        <li><span class="k">Дальше</span><span class="v">AI в ботах</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ===== CTA ===== -->
+  <section class="panel panel-cta">
+    <div class="panel-inner">
+      <span class="tag">Конец истории — начало разговора</span>
+      <h2 class="cta-title">Пишу код каждый день.<br>Напиши мне.</h2>
+      <div class="actions">
+        <a href="https://t.me/rutsiyax" target="_blank" rel="noopener" class="btn btn-solid">Написать в Telegram</a>
+        <a href="index.html" class="btn btn-line">Вернуться на сайт</a>
+      </div>
+      <p class="foot">Alijon Mahmadjonov · Душанбе · Python &amp; Telegram-боты</p>
+    </div>
+  </section>
+
+</main>
+
+<noscript>
+  <div class="noscript">Для 3D-сцены нужен JavaScript. Текст истории читается и без него.</div>
+</noscript>
+
+<script type="module" src="3d.js"></script>
+</body>
+</html>

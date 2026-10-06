@@ -1,0 +1,381 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}D-коин — {{ site_name }}{% endblock %}
+{% macro coin(size=44) -%}
+<svg class="dc-coin" width="{{ size }}" height="{{ size }}" viewBox="0 0 48 48" aria-hidden="true">
+  <defs><linearGradient id="dcg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset=".55" stop-color="#f5b52e"/><stop offset="1" stop-color="#d9860b"/></linearGradient></defs>
+  <circle cx="24" cy="24" r="22" fill="url(#dcg)"/><circle cx="24" cy="24" r="17.5" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="1.5"/>
+  <path d="M18 14h7.2c6 0 9.8 3.9 9.8 10s-3.8 10-9.8 10H18Zm5 4.3v11.4h2c3.2 0 5-2.1 5-5.7s-1.8-5.7-5-5.7Z" fill="#7a4a00"/>
+</svg>
+{%- endmacro %}
+{% block content %}
+<div class="dc-app" id="dc" data-tf="5s" data-cur="{{ cur_code }}" data-rate="{{ cur_rate or '' }}">
+  <section class="dc-head">
+    {{ coin(52) }}
+    <div class="dc-title">
+      <h1>D-коин</h1>
+      <div class="dc-price-row">
+        <b class="dc-price" id="dc-price">{{ dprice(d.price) }}</b>
+        <span class="dc-chg {{ 'up' if d.change >= 0 else 'down' }}" id="dc-chg">{{ '+' if d.change >= 0 }}{{ d.change }}%</span>
+      </div>
+      <span class="muted small">цена 1 D · за сегодня (с 00:00)</span>
+    </div>
+  </section>
+
+  <section class="dc-chart-card">
+    <div class="dc-bar">
+      <div class="dc-tfs" role="tablist" aria-label="Масштаб графика">
+        {% for tf in tfs %}<button type="button" role="tab" data-tf="{{ tf }}" class="{{ 'on' if tf == '5s' }}">{{ tf }}</button>{% endfor %}
+      </div>
+      <span class="dc-live"><i></i>LIVE</span>
+    </div>
+    <div class="dc-canvas-wrap">
+      <canvas id="dc-canvas" aria-label="График цены D-коина"></canvas>
+      <div class="dc-tip" id="dc-tip" hidden></div>
+      <button class="dc-now" id="dc-now" type="button" hidden>Сейчас {{ icon('arrow-right', 14) }}</button>
+      {% if d.price <= 0 %}<div class="dc-empty" id="dc-empty">Цена начнётся с первой выполненной покупки</div>{% endif %}
+    </div>
+    <div class="dc-hint">← листайте → · два пальца — масштаб</div>
+  </section>
+
+  <section class="dc-stats">
+    <div class="dc-stat main"><span>У вас</span><b id="dc-bal">{{ d.balance_text }} D</b><small id="dc-worth">≈ {{ money(d.worth_micro) }}{% if d.waiting %} · {{ d.waiting_text }} D ждут выполнения заказов{% endif %}</small></div>
+    <div class="dc-stat"><span>За покупку</span><b>$1 = {{ d.per_usd }} D</b><small>$0.50 = {{ d.per_usd // 2 }} D</small></div>
+  </section>
+
+
+  <section class="card dc-ex">
+    <h3>Обменять на баланс</h3>
+    <p class="muted small">D-коины — бонусные: их нельзя купить или вывести на карту, только обменять на баланс Donatix.</p>
+    {% if d.open %}
+    <form method="post" action="/panel/dcoin/exchange" class="dc-ex-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="dc-amount">Сколько D</label>
+      <div class="dc-ex-row">
+        <input id="dc-amount" name="amount" inputmode="decimal" placeholder="{{ d.balance_text }}" autocomplete="off">
+        <button class="btn soft" type="button" data-all="{{ d.free / 100 }}">Все</button>
+        <button class="btn primary" type="submit">Обменять</button>
+      </div>
+      <div class="hint">От $1 по текущей цене, раз в сутки, комиссия {{ d.fee_pct }}%. Сейчас все ваши монеты ≈ {{ money(d.worth_micro) }}.</div>
+    </form>
+    {% else %}
+    <div class="dc-lock">{{ icon('clock', 20) }}<span>Обмен откроется <b>{{ d.opens | dt }}</b>. Пока копите монеты.</span></div>
+    {% endif %}
+  </section>
+
+  {% if days %}
+  <section class="card dc-days">
+    <h3>Прошлые дни</h3>
+    <p class="muted small">Каждый день с 00:00 до 24:00: на сколько цена поднялась или опустилась.</p>
+    <div class="dc-days-list">
+      {% for x in days %}
+      <div class="dc-day">
+        <span class="dc-day-date">{{ x.day.strftime('%d.%m') }}</span>
+        <span class="dc-chg {{ 'up' if x.change >= 0 else 'down' }}">{{ '+' if x.change >= 0 }}{{ x.change }}%</span>
+        <span class="dc-day-range"><small>макс.</small> {{ dprice(x.high) }}<br><small>мин.</small> {{ dprice(x.low) }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="grid two dc-lists">
+    <section class="card">
+      <h3>История D-коинов</h3>
+      <div class="list tight">
+        {% for h in history %}
+        <div class="dc-row"><span class="grow">{{ h.reason }}<small>{{ h.created_at | dt }}{% if h.wait %} · ждёт выполнения заказа{% endif %}</small></span>
+          <b class="{{ 'wait' if h.wait else ('plus' if h.plus else 'minus') }}">{{ '+' if h.plus }}{{ h.amount }} D</b></div>
+        {% else %}<div class="empty">Сделайте покупку — первые D-коины появятся здесь.</div>{% endfor %}
+      </div>
+    </section>
+    <section class="card">
+      <h3>Топ держателей</h3>
+      <div class="list tight">
+        {% for t in top %}
+        <div class="dc-row"><span class="dc-place">{{ loop.index }}</span><span class="grow">{{ t.login }}</span><b>{{ t.coins }} D</b></div>
+        {% else %}<div class="empty">Пока никого — будьте первым.</div>{% endfor %}
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.getElementById("dc"), cv = document.getElementById("dc-canvas");
+  if (!root || !cv) return;
+  var ctx = cv.getContext("2d"), tip = document.getElementById("dc-tip"), nowBtn = document.getElementById("dc-now");
+  var CUR = root.dataset.cur, RATE = parseFloat(root.dataset.rate) || 0;
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var HISTORY = 300, DUR = reduce ? 1 : 650;
+  var tf = "5s", target = null, from = null, shown = null, t0 = 0, running = false;
+  var W = 0, H = 0, R = 64, B = 26, T = 12, timer = null, lastPrice = null;
+  // Вид: сколько свечей на экране и насколько пролистали назад (в свечах, может быть дробным)
+  var view = { count: 60, offset: 0 }, rng = null, hover = -1, drag = null, pts = {}, pinch = null, fling = 0;
+
+  function conv(v) { return CUR === "TJS" && RATE ? v * RATE : v; }
+  // Цена — 3 значащие цифры: коротко, и каждая покупка (шаг от 1%) меняет последнюю цифру
+  function places(v) { return v <= 0 ? 4 : Math.max(2, Math.min(12, 2 - Math.floor(Math.log10(v)))); }
+  function fmt(v) { v = conv(v); var s = v.toFixed(places(v)); return CUR === "TJS" && RATE ? s + " с." : "$" + s; }
+  var axisPlaces = 4;
+  function axis(v) { return conv(v).toFixed(axisPlaces); }
+  function css(name) { return getComputedStyle(root).getPropertyValue(name).trim(); }
+  function ease(x) { return 1 - Math.pow(1 - x, 3); }
+  function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
+
+  function size() {
+    var w = cv.parentNode.clientWidth, h = w < 560 ? 290 : 360, dpr = window.devicePixelRatio || 1;
+    W = w; H = h; cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + "px"; cv.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  // Новые данные «перетекают» из старых: свечи плавно доходят до новых значений
+  function blend(k) {
+    var tc = target.candles;
+    if (!from || from.length !== tc.length || from[0][0] !== tc[0][0]) {
+      if (from && from.length === tc.length && tc[0][0] - from[0][0] === target.step * 1000) {
+        from = from.slice(1).concat([tc[tc.length - 1].slice()]);
+      } else { from = tc; }
+    }
+    return tc.map(function (c, i) {
+      var f = from[i];
+      return [c[0], f[1] + (c[1] - f[1]) * k, f[2] + (c[2] - f[2]) * k, f[3] + (c[3] - f[3]) * k, f[4] + (c[4] - f[4]) * k];
+    });
+  }
+
+  function limits() {
+    var n = shown ? shown.length : 0;
+    view.count = clamp(view.count, Math.min(12, n || 12), Math.max(12, Math.min(n || 12, HISTORY)));
+    view.offset = clamp(view.offset, 0, Math.max(0, n - view.count));
+    nowBtn.hidden = view.offset < 1;
+  }
+
+  function frame(now) {
+    if (!target) { running = false; return; }
+    shown = blend(ease(Math.min(1, (now - t0) / DUR)));
+    if (fling && !drag && !pinch) { view.offset += fling; fling *= 0.92; if (Math.abs(fling) < 0.01) fling = 0; }
+    limits();
+    draw(now);
+    requestAnimationFrame(frame);
+  }
+
+  function draw(now) {
+    var c = shown, n = c.length, cnt = view.count, s = n - cnt - view.offset;   // s — индекс левого края
+    var i0 = Math.max(0, Math.floor(s) - 1), i1 = Math.min(n - 1, Math.ceil(s + cnt));
+    // масштаб по видимым свечам, плавно
+    var lo = Infinity, hi = -Infinity;
+    for (var i = i0; i <= i1; i++) if (c[i][2] > 0) { lo = Math.min(lo, c[i][3] > 0 ? c[i][3] : c[i][4]); hi = Math.max(hi, c[i][2]); }
+    if (!isFinite(lo)) { lo = 0; hi = 0; }
+    if (hi - lo < Math.max(hi, 1e-12) * 0.002) { var m = (hi + lo) / 2 || 1e-6; lo = m * 0.998; hi = m * 1.002; }
+    var pad = (hi - lo) * 0.12; lo = Math.max(0, lo - pad); hi += pad;
+    if (!rng) rng = [lo, hi]; else { rng[0] += (lo - rng[0]) * 0.2; rng[1] += (hi - rng[1]) * 0.2; }
+    lo = rng[0]; hi = rng[1];
+
+    ctx.font = "700 12px " + css("--font-num");
+    var gstep = conv((hi - lo) / 4), last = c[n - 1][4];
+    axisPlaces = Math.max(places(conv(last || hi)), gstep > 0 ? Math.min(12, 1 - Math.floor(Math.log10(gstep))) : 4);
+    R = Math.max(62, Math.ceil(Math.max(ctx.measureText(axis(hi)).width, ctx.measureText(axis(last)).width)) + 26);
+    var pw = W - R, ph = H - B - T, bw = pw / cnt;
+    var X = function (idx) { return (idx - s) * bw + bw / 2; };
+    var Y = function (v) { return T + (hi - v) / (hi - lo || 1) * ph; };
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.font = "500 12px " + css("--font-num"); ctx.textBaseline = "middle";
+    for (var g = 0; g <= 4; g++) {
+      var v = lo + (hi - lo) * g / 4, y = Y(v);
+      ctx.strokeStyle = css("--dc-grid"); ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, Math.round(y) + .5); ctx.lineTo(pw, Math.round(y) + .5); ctx.stroke();
+      ctx.fillStyle = css("--dc-axis"); ctx.textAlign = "left"; ctx.fillText(axis(v), pw + 8, y);
+    }
+    // время снизу: подписи привязаны к свечам и едут вместе с графиком
+    ctx.textAlign = "center"; ctx.textBaseline = "alphabetic";
+    var labelW = ctx.measureText(target.step < 60 ? "00:00:00" : "00:00").width + 18;
+    var every = Math.max(1, Math.ceil(labelW / bw));
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, pw, H); ctx.clip();
+    for (var li = Math.floor(i0 / every) * every; li <= i1; li += every) {
+      if (li < 0) continue;
+      var d = new Date(c[li][0]);
+      var lbl = target.step >= 86400 ? d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })
+        : d.toLocaleTimeString("ru-RU", target.step < 60 ? { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }
+          : { hour: "2-digit", minute: "2-digit", hour12: false });
+      ctx.fillStyle = css("--dc-axis"); ctx.fillText(lbl, X(li), H - 8);
+    }
+    // свечи
+    // Как в Quotex: яркие прямоугольные тела во всю свечу, тонкая чёткая тень того же цвета
+    var up = css("--dc-up"), down = css("--dc-down"), flat = css("--dc-flat"), w = Math.max(2, Math.round(bw * .72));
+    for (var j = i0; j <= i1; j++) {
+      var o = c[j][1], h = c[j][2], l = c[j][3], cl = c[j][4], x = X(j);
+      if (h <= 0) continue;                  // до первой покупки цены ещё нет
+      if (o <= 0) { o = cl; l = Math.min(l > 0 ? l : cl, cl); }
+      var still = Math.abs(cl - o) < (hi - lo) * 0.002 && Math.abs(h - l) < (hi - lo) * 0.002;
+      var col = still ? flat : (cl >= o ? up : down);
+      // тень (фитиль): верх — максимум за свечу, низ — минимум
+      var cx = Math.round(x);
+      ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = bw > 14 ? 2 : 1; ctx.lineCap = "butt";
+      ctx.beginPath(); ctx.moveTo(cx + (bw > 14 ? 0 : .5), Math.round(Y(h))); ctx.lineTo(cx + (bw > 14 ? 0 : .5), Math.round(Y(l)));
+      ctx.stroke();
+      var top = Math.round(Y(Math.max(o, cl))), bot = Math.round(Y(Math.min(o, cl)));
+      ctx.fillRect(cx - Math.floor(w / 2), top, w, Math.max(still ? 1 : 2, bot - top));
+    }
+    // перекрестие под пальцем
+    if (hover >= i0 && hover <= i1) {
+      ctx.strokeStyle = css("--dc-axis"); ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(Math.round(X(hover)) + .5, T); ctx.lineTo(Math.round(X(hover)) + .5, T + ph); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
+    // линия текущей цены и «таблетка» справа — видна, даже когда пролистали назад
+    var ly = clamp(Y(last), T, T + ph);
+    ctx.setLineDash([6, 5]); ctx.strokeStyle = css("--dc-now-line"); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, Math.round(ly) + .5); ctx.lineTo(pw, Math.round(ly) + .5); ctx.stroke(); ctx.setLineDash([]);
+    if (view.offset < 0.5) {
+      var pulse = reduce ? 0 : (Math.sin(now / 420) + 1) / 2, lx = X(n - 1);
+      ctx.fillStyle = css("--dc-line"); ctx.globalAlpha = .25 + .25 * pulse;
+      ctx.beginPath(); ctx.arc(lx, ly, 5 + 5 * pulse, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, 7); ctx.fill();
+    }
+    ctx.font = "700 12px " + css("--font-num");
+    var lastC = conv(last), txt = lastC.toFixed(places(lastC)), tw = ctx.measureText(txt).width + 18;
+    ctx.fillStyle = css("--dc-line");
+    roundRect(pw + 2, ly - 12, Math.min(tw, R - 2), 24, 12);
+    ctx.fillStyle = "#fff"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(txt, pw + 11, ly + .5);
+    view.bw = bw; view.s = s; view.pw = pw;
+  }
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); ctx.fill();
+  }
+
+  function setText(id, text) { var el = document.getElementById(id); if (el && el.textContent !== text) { el.textContent = text; el.classList.remove("tick"); void el.offsetWidth; el.classList.add("tick"); } }
+
+  function load() {
+    fetch("/panel/data/dcoin?tf=" + tf + "&n=" + HISTORY, { credentials: "same-origin", cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d) return;
+        var fresh = !target || target.tf !== d.tf;
+        if (!fresh && view.offset > 0 && d.candles[0][0] > target.candles[0][0]) {
+          view.offset += (d.candles[0][0] - target.candles[0][0]) / (d.step * 1000);   // пролистали назад — вид стоит на месте
+        }
+        from = fresh ? null : shown;
+        target = { tf: d.tf, step: d.step, candles: d.candles };
+        t0 = performance.now();
+        if (fresh) rng = null;
+        if (!running) { running = true; requestAnimationFrame(frame); }
+        var price = document.getElementById("dc-price");
+        if (lastPrice !== null && d.price !== lastPrice) {
+          price.classList.remove("flash-up", "flash-down"); void price.offsetWidth;
+          price.classList.add(d.price > lastPrice ? "flash-up" : "flash-down");
+        }
+        lastPrice = d.price;
+        setText("dc-price", fmt(d.price));
+        var chg = document.getElementById("dc-chg");
+        chg.textContent = (d.change >= 0 ? "+" : "") + d.change + "%";
+        chg.className = "dc-chg " + (d.change >= 0 ? "up" : "down");
+        setText("dc-bal", d.balance + " D");
+        var empty = document.getElementById("dc-empty");
+        if (empty && d.price > 0) empty.hidden = true;
+      }).catch(function () {});
+  }
+  // 1s/5s — спрашиваем каждую секунду, остальные масштабы — раз в 3 секунды
+  function loop() { clearTimeout(timer); if (!document.hidden) load(); timer = setTimeout(loop, tf === "1s" || tf === "5s" ? 1000 : 3000); }
+
+  root.querySelectorAll(".dc-tfs button").forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (b.dataset.tf === tf) return;
+      root.querySelectorAll(".dc-tfs button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      tf = b.dataset.tf; target = null; from = null; view.offset = 0; loop();
+    });
+  });
+
+  // ── Пальцы и мышь: листать влево-вправо, сводить/разводить — масштаб ──
+  function localX(e) { return e.clientX - cv.getBoundingClientRect().left; }
+  function zoomAt(px, factor) {
+    if (!view.bw) return;
+    var n = shown.length, anchor = view.s + (px - view.bw / 2) / view.bw;          // свеча под пальцем
+    view.count = clamp(view.count * factor, 12, Math.min(n, HISTORY));
+    var bw = view.pw / view.count;
+    view.offset = n - view.count - (anchor - (px - bw / 2) / bw);
+    limits();
+  }
+  function showTip(px) {
+    if (!shown || !view.bw || px < 0 || px > view.pw) { hover = -1; tip.hidden = true; return; }
+    hover = Math.round(view.s + (px - view.bw / 2) / view.bw);
+    var c = shown[hover];
+    if (!c) { hover = -1; tip.hidden = true; return; }
+    var d = new Date(c[0]);
+    var when = target.step >= 86400 ? d.toLocaleDateString("ru-RU")
+      : d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+          second: target.step < 60 ? "2-digit" : undefined, hour12: false });
+    tip.innerHTML = "<b>" + when + "</b>" + (c[2] <= 0 ? "<span>До первой покупки</span>"
+      : "<span>Откр. " + fmt(c[1] > 0 ? c[1] : c[4]) + "</span><span>Макс. " + fmt(c[2]) + "</span><span>Мин. " + fmt(c[3] > 0 ? c[3] : c[4]) +
+        "</span><span>Закр. " + fmt(c[4]) + "</span>");
+    tip.hidden = false;
+    tip.style.left = clamp(px - tip.offsetWidth / 2, 4, W - tip.offsetWidth - 4) + "px";
+  }
+  cv.addEventListener("pointerdown", function (e) {
+    pts[e.pointerId] = localX(e); fling = 0;
+    try { cv.setPointerCapture(e.pointerId); } catch (err) {}
+    var ids = Object.keys(pts);
+    if (ids.length === 2) {
+      pinch = { dist: Math.abs(pts[ids[0]] - pts[ids[1]]) || 1, count: view.count };
+      drag = null; hover = -1; tip.hidden = true;
+    } else {
+      drag = { x: localX(e), offset: view.offset, moved: false, lastX: localX(e), lastT: performance.now(), v: 0 };
+      if (e.pointerType !== "mouse") showTip(localX(e));
+    }
+  });
+  cv.addEventListener("pointermove", function (e) {
+    var x = localX(e);
+    if (pts[e.pointerId] !== undefined) pts[e.pointerId] = x;
+    var ids = Object.keys(pts);
+    if (pinch && ids.length === 2) {
+      var a = pts[ids[0]], b = pts[ids[1]], dist = Math.abs(a - b) || 1;
+      var want = clamp(pinch.count * pinch.dist / dist, 12, Math.min(shown.length, HISTORY));
+      zoomAt((a + b) / 2, want / view.count);
+      return;
+    }
+    if (drag) {
+      var dx = x - drag.x;
+      if (!drag.moved && Math.abs(dx) > 6) { drag.moved = true; hover = -1; tip.hidden = true; }
+      if (drag.moved) {
+        view.offset = drag.offset + dx / (view.bw || 1);     // палец вправо — смотрим прошлое
+        var t = performance.now();
+        drag.v = (x - drag.lastX) / (view.bw || 1) / Math.max(1, t - drag.lastT) * 16;
+        drag.lastX = x; drag.lastT = t;
+        limits();
+      } else if (e.pointerType !== "mouse") { showTip(x); }
+      return;
+    }
+    if (e.pointerType === "mouse") showTip(x);
+  });
+  function release(e) {
+    delete pts[e.pointerId];
+    if (Object.keys(pts).length < 2) pinch = null;
+    if (drag && drag.moved && !reduce) fling = drag.v;                // отпустили — график ещё немного катится
+    if (!Object.keys(pts).length) drag = null;
+  }
+  cv.addEventListener("pointerup", release);
+  cv.addEventListener("pointercancel", release);
+  cv.addEventListener("pointerleave", function (e) { if (e.pointerType === "mouse") { hover = -1; tip.hidden = true; } });
+  cv.addEventListener("wheel", function (e) {
+    if (!shown) return;
+    e.preventDefault();
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY) || e.shiftKey) {
+      view.offset -= (e.deltaX || e.deltaY) / (view.bw || 1); limits();
+    } else {
+      zoomAt(localX(e), Math.exp(e.deltaY * 0.0015));
+    }
+  }, { passive: false });
+  cv.addEventListener("dblclick", function () { view.offset = 0; view.count = 60; limits(); });
+  cv.addEventListener("contextmenu", function (e) { e.preventDefault(); });
+  nowBtn.addEventListener("click", function () { fling = 0; view.offset = 0; limits(); });
+
+  var all = root.querySelector("[data-all]");
+  if (all) all.addEventListener("click", function () { document.getElementById("dc-amount").value = all.dataset.all; });
+  window.addEventListener("resize", size);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) loop(); });
+  size(); loop();
+})();
+</script>
+{% endblock %}

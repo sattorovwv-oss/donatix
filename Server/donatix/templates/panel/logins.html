@@ -1,0 +1,21 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}История входов — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <a class="back" href="/panel">{{ icon('arrow-left', 18) }}Профиль</a>
+  <h1>История входов</h1>
+  <p>Последние 30 входов. Если видите незнакомый — смените пароль и напишите в поддержку.</p>
+</section>
+<div class="list">
+  {% for r in rows %}
+  <div class="item">
+    <div class="tile sm">{{ icon('shield', 18) }}</div>
+    <div class="grow">
+      <div class="head"><span class="title mono">{{ r.ip or '—' }}</span><span class="pill">{{ r.created_at | dt }}</span></div>
+      <div class="sub">{{ (r.user_agent or '')[:120] }}</div>
+    </div>
+  </div>
+  {% else %}<div class="card empty">Пока пусто.</div>{% endfor %}
+</div>
+{% endblock %}

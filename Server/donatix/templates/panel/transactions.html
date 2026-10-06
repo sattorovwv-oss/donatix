@@ -1,0 +1,39 @@
+{% extends "panel/_layout.html" %}
+{% block title %}Транзакции — {{ site_name }}{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon, status %}
+<section class="page-hero"><h1>Транзакции</h1></section>
+<form class="card" method="get"><div class="filters">
+  <div><label class="label-caps" for="type">Тип движения</label>
+    <select id="type" name="type">
+      <option value="">Все движения</option>
+      <option value="credit" {{ 'selected' if type == 'credit' }}>Начисления</option>
+      <option value="debit" {{ 'selected' if type == 'debit' }}>Списания</option>
+    </select></div>
+  <div style="display:flex;align-items:end"><button class="btn block">Показать</button></div>
+</div></form>
+<div class="list" style="margin-top:16px">
+  {% for t in rows %}
+  {% set plus = t.amount_micro > 0 %}
+  <div class="item">
+    <div class="tile {{ 'ok' if plus else 'bad' }}">{{ icon('wallet' if plus else 'swap', 24) }}</div>
+    <div class="grow">
+      <div class="head"><span class="title">tx{{ t.id }}</span>
+        <span class="amount {{ 'plus' if plus else 'minus' }}">{{ '+' if plus else '−' }}{{ money(t.amount_micro | abs) }}</span></div>
+      <div class="tx-bal">Было <b>{{ money(t.balance_before) }}</b> <span class="tx-arrow">→</span>
+        стало <b>{{ money(t.balance_after) }}</b></div>
+      <div class="sub">{% if t.order_public %}<a href="/panel/orders/{{ t.order_public }}">{{ t.note }}</a>{% else %}{{ t.note }}{% endif %}</div>
+      <div class="meta">{{ status('completed') }}<span class="pill">{{ 'Начисление' if plus else 'Списание' }}</span>
+        <span class="pill">{{ t.created_at | dt }}</span></div>
+    </div>
+  </div>
+  {% else %}<div class="card empty">Движений пока нет.</div>{% endfor %}
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a class="btn sm" href="?type={{ type }}&page={{ page - 1 }}">←</a>{% endif %}
+  <span class="muted">{{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a class="btn sm" href="?type={{ type }}&page={{ page + 1 }}">→</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Конструктор ботов — админка{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Конструктор ботов</h1>
+  <p>Токен бота и Telegram ID владельца — бот-магазин запускается сам. Товары и цены — из Donatix, заказы списываются с баланса выбранного клиента.</p>
+</section>
+{% if not template_ok %}<div class="flash error">{{ icon('alert', 20) }}<span>Нет папки partner_bot с кодом бота — обновите сайт.</span></div>{% endif %}
+{% if not runner %}<div class="flash warn">{{ icon('alert', 20) }}<span>Запуск ботов выключен (DONATIX_RUN_BOTS=0 или фоновые задачи выключены).</span></div>{% endif %}
+
+<form class="card bot-new" method="post" action="/admin/bots">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="pm-head"><span class="tile">{{ icon('plus', 20) }}</span><h3 style="margin:0">Подключить бота</h3></div>
+  <label for="token">Токен бота <span class="muted">— у @BotFather: /newbot</span></label>
+  <input id="token" name="token" required autocomplete="off" placeholder="123456789:AAH…" spellcheck="false">
+  <div class="grid two" style="gap:12px">
+    <div><label for="admin_ids">Telegram ID админа бота <span class="muted">— у @userinfobot</span></label>
+      <input id="admin_ids" name="admin_ids" required inputmode="numeric" placeholder="123456789 (несколько — через запятую)"></div>
+    <div><label for="user_id">Чей баланс тратит бот</label>
+      <select id="user_id" name="user_id">
+        <option value="0">Мой (админ)</option>
+        {% for c in clients if c.id != user.id %}<option value="{{ c.id }}">{{ c.login }}{{ ' · ' ~ c.project if c.project }}</option>{% endfor %}
+      </select></div>
+  </div>
+  <button class="btn primary lg block" style="margin-top:16px">{{ icon('zap-send', 18) }}Подключить и запустить</button>
+  <p class="hint">API-ключ для бота создастся сам. В боте админ увидит раздел «🏦 Счёт Donatix» — пополнение с чеком, который придёт вам в админ-бот.</p>
+</form>
+
+<div class="section-title"><h2>Боты</h2></div>
+<div class="list">
+  {% for b in bots %}
+  <div class="card bot-card">
+    <div class="bot-head">
+      <span class="status-dot {{ 'on' if b.running else ('wait' if b.enabled else 'off') }}"></span>
+      <div class="grow">
+        <b>@{{ b.username or 'бот' }}</b>
+        <div class="muted small">баланс клиента {{ b.login }}: ${{ fmt(b.balance_micro) }}</div>
+      </div>
+      <span class="badge {{ 'ok' if b.running else ('warn' if b.enabled else '') }}">
+        {{ 'работает' if b.running else ('запускается…' if b.enabled else 'остановлен') }}</span>
+    </div>
+    {% if b.conflict %}
+    <div class="flash error" style="margin:10px 0 0">{{ icon('alert', 20) }}<span><b>Этот токен работает ещё в одной программе</b> — поэтому бот отвечает дважды.
+      Остановите другую копию (например, старый бот на сервере) или создайте для конструктора новый бот у @BotFather.</span></div>
+    {% endif %}
+    <div class="bot-meta small muted">
+      Админы: <span class="mono">{{ b.admin_ids }}</span>
+      {% if b.warn_count %} · ⚠️ предупреждений: {{ b.warn_count }}{% endif %}
+      {% if b.disabled_reason == 'inactive' %} · ⛔️ отключён: нет продаж{% endif %}
+      {% if b.restarts %} · перезапусков: {{ b.restarts }}{% endif %}
+      {% if b.last_exit is not none and not b.running %} · код выхода {{ b.last_exit }}{% endif %}
+      {% if b.venv and b.venv != 'ok' %} · библиотеки: {{ 'ставятся…' if b.venv == 'installing' else b.venv }}{% endif %}
+    </div>
+    <div class="bot-actions">
+      <a class="btn sm" href="https://t.me/{{ b.username }}" target="_blank" rel="noopener">Открыть</a>
+      <a class="btn sm" href="/admin/bots/{{ b.id }}/log" target="_blank" rel="noopener">Лог</a>
+      {% for action, title in ([('restart', 'Перезапустить'), ('stop', 'Остановить')] if b.enabled else [('start', 'Запустить')]) %}
+      <form class="inline" method="post" action="/admin/bots/{{ b.id }}/{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm">{{ title }}</button></form>
+      {% endfor %}
+      <form class="inline" method="post" action="/admin/bots/{{ b.id }}/delete" onsubmit="return confirm('Удалить бота @{{ b.username }}? Он перестанет работать, его API-ключ будет отозван.')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm danger">Удалить</button></form>
+    </div>
+    <form class="bot-admins" method="post" action="/admin/bots/{{ b.id }}/admins">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="admin_ids" value="{{ b.admin_ids }}" aria-label="Telegram ID админов" inputmode="numeric">
+      <button class="btn sm">Сменить админов</button>
+    </form>
+  </div>
+  {% else %}<div class="card empty">Ботов пока нет. Подключите первый — нужен только токен и Telegram ID.</div>{% endfor %}
+</div>
+{% endblock %}

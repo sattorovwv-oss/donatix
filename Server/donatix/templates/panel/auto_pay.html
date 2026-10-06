@@ -1,0 +1,54 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Оплата #{{ p.id }} — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Оплата #{{ p.id }}</h1><p>{{ p.method_title }} · зачислится автоматически</p></section>
+
+<div class="card autopay" id="autopay" data-id="{{ p.id }}" data-status="{{ p.status }}">
+  {% if p.status == 'paid' %}
+  <div class="ap-done">✅ Оплата получена — баланс пополнен на {{ money(p.amount_usd) }}.</div>
+  <a class="btn primary block" href="/panel">В профиль</a>
+  {% elif p.status != 'pending' %}
+  <div class="flash error">Заявка закрыта{% if p.note %}: {{ p.note }}{% endif %}.</div>
+  <a class="btn block" href="/panel/balance">Создать новую</a>
+  {% else %}
+  <div class="ap-label">К оплате</div>
+  <div class="ap-amount"><span id="ap-sum">{{ p.pay_amount }}</span> {{ p.pay_currency }}
+    <button type="button" class="icon-btn" data-copy="{{ p.pay_amount }}" aria-label="Скопировать сумму">{{ icon('copy', 18) }}</button></div>
+  <div class="ap-sub">Будет зачислено: <b>{{ money(p.amount_usd) }}</b></div>
+
+  {% if p.auto == 'trc20' %}
+  <div class="ap-label" style="margin-top:14px">Адрес USDT · сеть Tron (TRC20)</div>
+  <div class="key-box"><code class="mono">{{ p.address }}</code>
+    <button type="button" class="icon-btn" data-copy="{{ p.address }}" aria-label="Скопировать адрес">{{ icon('copy', 18) }}</button></div>
+  <div class="flash error net-warn">⚠️ Переведите <b>ровно {{ p.pay_amount }} USDT</b> в сети <b>TRC20</b>. По последним цифрам суммы мы узнаём ваш перевод — другая сумма или сеть не зачислится автоматически.</div>
+  {% elif p.auto == 'bybit' %}
+  <div class="ap-label" style="margin-top:14px">Bybit UID получателя</div>
+  <div class="key-box"><code class="mono">{{ p.address }}</code>
+    <button type="button" class="icon-btn" data-copy="{{ p.address }}" aria-label="Скопировать UID">{{ icon('copy', 18) }}</button></div>
+  <div class="flash error net-warn">⚠️ В приложении Bybit: <b>Активы → Перевод → По UID</b>, монета USDT, сумма <b>ровно {{ p.pay_amount }}</b>. По последним цифрам суммы мы узнаём ваш перевод.</div>
+  {% elif p.auto == 'binance' %}
+  <a class="btn primary block lg" href="{{ p.pay_url }}" target="_blank" rel="noopener" style="margin-top:14px">Оплатить в Binance</a>
+  {% endif %}
+
+  <div class="ap-wait"><span class="spinner"></span> Ждём поступление — страница обновится сама.</div>
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var box = document.getElementById("autopay");
+  document.querySelectorAll("[data-copy]").forEach(function (b) {
+    b.addEventListener("click", function () { if (navigator.clipboard) navigator.clipboard.writeText(b.dataset.copy); });
+  });
+  if (!box || box.dataset.status !== "pending") return;
+  setInterval(function () {
+    if (document.hidden) return;
+    fetch("/panel/data/payment/" + box.dataset.id, {credentials: "same-origin"})
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d.status && d.status !== "pending") location.reload(); })
+      .catch(function () {});
+  }, 10000);
+})();
+</script>
+{% endblock %}

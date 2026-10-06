@@ -1,0 +1,52 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Пополнения — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Пополнения</h1><p>Сверьте поступление и подтвердите. <a href="/admin/pay-settings">Реквизиты</a></p></section>
+<div class="chips" style="margin-bottom:14px">
+  {% for s, t in [('pending', 'Ждут проверки'), ('paid', 'Зачислено'), ('rejected', 'Отклонено'), ('fake', 'Поддельные'), ('cancelled', 'Отменено'), ('all', 'Все')] %}
+  <a class="chip {{ 'on' if s == status }}" href="/admin/payments?status={{ s }}">{{ t }}</a>
+  {% endfor %}
+</div>
+<div class="list">
+  {% for p in rows %}
+  <div class="card reveal">
+    <div class="head" style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+      <div><b>#{{ p.id }} · <a href="/admin/users/{{ p.user_id }}">{{ p.login }}</a></b>
+        <div class="muted small">{{ titles.get(p.method, p.method) }} · {{ p.created_at | dt }} · баланс сейчас ${{ fmt(p.balance_micro) }}</div></div>
+      <div class="right"><div class="amount">${{ fmt(p.amount_micro) }}</div><div class="small muted">к переводу {{ p.pay_amount }} {{ p.pay_currency }}</div></div>
+    </div>
+    {% if p.reference %}<div class="small" style="margin-top:8px">Чек / хэш: <span class="mono">{{ p.reference }}</span></div>{% endif %}
+    {% if p.ai %}<div class="small receipt-ai">{% for line in p.ai.split('\n') %}<div>{{ line }}</div>{% endfor %}</div>{% endif %}
+    {% if p.receipt_file %}<a class="btn sm" style="margin-top:8px" href="/admin/payments/{{ p.id }}/receipt" target="_blank" rel="noopener">🧾 Открыть чек</a>{% endif %}
+    {% if p.status == 'pending' %}
+    <div class="filters" style="margin-top:14px">
+      <form method="post" action="/admin/payments/{{ p.id }}/confirm">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="label-caps" for="c{{ p.id }}">Зачислить, USD</label>
+        <input id="c{{ p.id }}" name="credit" inputmode="decimal" value="{{ fmt(p.amount_micro) }}">
+        <button class="btn primary block" style="margin-top:8px">{{ icon('check', 18) }}Подтвердить</button>
+      </form>
+      <form method="post" action="/admin/payments/{{ p.id }}/reject">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label class="label-caps" for="r{{ p.id }}">Причина отказа</label>
+        <input id="r{{ p.id }}" name="reason" placeholder="Перевод не найден">
+        <button class="btn danger block" style="margin-top:8px">{{ icon('x', 18) }}Отклонить</button>
+      </form>
+    </div>
+    {% else %}
+    <div style="margin-top:10px"><span class="badge {{ {'paid': 'ok', 'rejected': 'bad', 'fake': 'bad'}.get(p.status, '') }}">{{ {'paid': 'Зачислено', 'rejected': 'Отклонено', 'cancelled': 'Отменено', 'fake': '🚨 Поддельный чек'}.get(p.status, p.status) }}</span>
+      <span class="small"> · решил: <b>{{ p.who }}</b>{% if p.resolved_at %} · {{ p.resolved_at | dt }}{% endif %}</span>
+      {% if p.admin_note %}<span class="small muted"> · {{ p.admin_note }}</span>{% endif %}</div>
+    {% if p.status == 'paid' and not p.auto_kind %}
+    <form method="post" action="/admin/payments/{{ p.id }}/fake" style="margin-top:10px"
+          onsubmit="return confirm('Деньги по заявке #{{ p.id }} не пришли? Сумма ${{ fmt(p.amount_micro) }} будет списана с баланса клиента (можно в минус — долг закроется из следующего пополнения).')">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn sm danger">🚨 Чек поддельный — списать сумму</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% else %}<div class="card empty">Заявок нет.</div>{% endfor %}
+</div>
+{% endblock %}

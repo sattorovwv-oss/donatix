@@ -1,0 +1,64 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Деньги за сутки — админка{% endblock %}
+{% macro both(micro, s) %}${{ usd(micro) }}{% if s.rate %} <small class="muted">≈ {{ tjs(micro, s.rate) }} с.</small>{% endif %}{% endmacro %}
+{% block content %}
+<section class="page-hero">
+  <h1>Деньги за сутки</h1>
+  <p>Сутки считаются с {{ '%02d' | format(cutoff) }}:00 до {{ '%02d' | format(cutoff) }}:00 следующего дня · {{ site_tz }}.
+    Каждый день в {{ '%02d' | format(cutoff) }}:00 итог приходит в админ-бот.</p>
+</section>
+
+{% set s = now %}
+<div class="card fin-now">
+  <div class="fin-head">
+    <div><div class="label-caps">Сейчас идут сутки</div>
+      <b>{{ s.start.strftime('%d.%m %H:%M') }} — {{ s.end.strftime('%d.%m %H:%M') }}</b></div>
+    <form method="post" action="/admin/finance/send"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn sm">{{ icon('zap-send', 14) }}Отчёт за прошлые сутки — в бот</button></form>
+  </div>
+  <div class="grid kpis fin-kpis">
+    <div class="kpi"><span class="tile g2">{{ icon('wallet', 20) }}</span>
+      <div class="label">Поступило переводами</div><div class="value">{{ both(s.received, s) }}</div>
+      <div class="note">{{ s.payments }} пополн. · на карты ${{ usd(s.to_card) }}{% if s.crypto %} · крипта ${{ usd(s.crypto) }}{% endif %}</div></div>
+    <div class="kpi"><span class="tile ok">{{ icon('chart', 20) }}</span>
+      <div class="label">Ваша прибыль{% if s.referral or s.dcoin %} (чистая){% endif %}</div><div class="value">{{ both(s.profit, s) }}</div>
+      {% if s.referral or s.dcoin %}<div class="note">с продаж ${{ usd(s.gross_profit) }}{% if s.referral %} − бонусы рефералам ${{ usd(s.referral) }}{% endif %}{% if s.dcoin %} − в копилку D-коина ${{ usd(s.dcoin) }}{% endif %}</div>{% endif %}
+      <div class="note">продано {{ s.orders }} заказов на ${{ usd(s.revenue) }} · закупка ${{ usd(s.cost) }}</div>
+      {% for c in s.cashiers %}<div class="note">кассир {{ c.name }} ({{ c.percent }}%, его банки ${{ usd(c.received) }}): −${{ usd(c.share) }}</div>{% endfor %}
+      {% if s.cashiers %}<div class="note"><b>вам: {{ both(s.owner_profit, s) }}</b></div>{% endif %}</div>
+    <div class="kpi fin-send"><span class="tile">{{ icon('arrow-right', 20) }}</span>
+      <div class="label">Отправить поставщику</div><div class="value">{{ both(s.to_supplier, s) }}</div>
+      <div class="note">= поступило − прибыль. Прибыль забираете себе.</div></div>
+    <div class="kpi"><span class="tile g5">{{ icon('users', 20) }}</span>
+      <div class="label">Деньги клиентов на балансах</div><div class="value">{{ both(s.clients_balance, s) }}</div>
+      <div class="note">баланс поставщика: {{ '$' ~ s.supplier_balance if s.supplier_balance else '—' }}</div></div>
+  </div>
+  {% if s.methods %}
+  <div class="table-wrap"><table>
+    <tr><th>Способ</th><th class="num">Пополнений</th><th class="num">Сумма</th><th class="num">В долларах</th></tr>
+    {% for m in s.methods %}
+    <tr><td>{{ m.title }}{% if m.auto %} <span class="badge">авто</span>{% endif %}</td><td class="num">{{ m.count }}</td>
+      <td class="num">{{ '%.2f' | format(m.paid) }} {{ m.currency }}</td><td class="num">${{ usd(m.usd_micro) }}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% else %}<p class="muted">За эти сутки пополнений пока нет.</p>{% endif %}
+</div>
+
+<h2 class="section-title">По дням</h2>
+<div class="table-wrap card"><table class="fin-table">
+  <tr><th>Сутки</th><th class="num">Поступило</th><th class="num">Продано</th><th class="num">Прибыль</th>
+    <th class="num">Отправить поставщику</th></tr>
+  {% for d in days %}
+  <tr class="{{ 'fin-cur' if loop.first }}">
+    <td class="nowrap">{{ d.start.strftime('%d.%m') }} {{ '%02d' | format(cutoff) }}:00 → {{ d.end.strftime('%d.%m') }}{% if loop.first %} <span class="badge warn">идут</span>{% endif %}</td>
+    <td class="num">{{ both(d.received, d) }}</td>
+    <td class="num">{{ d.orders }} · ${{ usd(d.revenue) }}</td>
+    <td class="num"><b>{{ both(d.profit, d) }}</b></td>
+    <td class="num">{{ both(d.to_supplier, d) }}</td>
+  </tr>
+  {% endfor %}
+</table></div>
+<p class="hint">Прибыль = продажи минус закупка у поставщика (по выполненным заказам). Непотраченное клиентами остаётся на их
+  балансах — это их деньги, их тоже закупают у поставщика, когда клиент делает заказ. Суммы в сомони — по курсу из «Реквизитов».</p>
+{% endblock %}

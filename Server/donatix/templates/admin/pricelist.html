@@ -1,0 +1,193 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Прайс-лист картинкой — админка{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Прайс-лист картинкой</h1>
+  <p>Цены продажи в сомони — прямо из каталога: наценка сайта {{ data.markup }}%, курс {{ data.rate }} с. за $1.</p>
+</section>
+
+<div class="pl-tools card">
+  <div class="periods" role="tablist" aria-label="Что показать">
+    <a class="{{ 'on' if show == 'all' }}" href="?show=all&fmt={{ fmt }}">Все игры</a>
+    {% for s in data.sections %}<a class="{{ 'on' if show == s.key }}" href="?show={{ s.key }}&fmt={{ fmt }}">{{ s.game }} {{ s.sub if s.key != 'pubg' else '' }}</a>{% endfor %}
+  </div>
+  <div class="periods" role="tablist" aria-label="Формат">
+    <a class="{{ 'on' if fmt == 'post' }}" href="?show={{ show }}&fmt=post">Пост 1080×1350</a>
+    <a class="{{ 'on' if fmt == 'story' }}" href="?show={{ show }}&fmt=story">Сторис 1080×1920</a>
+  </div>
+  <button class="btn primary lg" type="button" id="pl-download" disabled>{{ icon('arrow-up', 18) }}Скачать PNG</button>
+</div>
+
+{% if not sections %}
+<div class="card empty">В каталоге пока нет Free Fire СНГ / Индонезия и PUBG Mobile. Загрузите каталог: Админка → Загрузка каталога.</div>
+{% else %}
+<p class="muted small">Не скачивается? Нажмите на картинку и удерживайте → «Сохранить изображение».</p>
+<div class="pl-stage" id="pl-stage"><div class="pl-wait">Рисуем картинку…</div></div>
+{% set single = cards | length == 1 %}
+<script type="application/json" id="pl-data">{{ {
+  "fmt": fmt, "single": single, "today": today, "site": site_host, "support": support_contact or "",
+  "file": "donatix-" ~ show ~ "-" ~ fmt ~ "-" ~ today ~ ".png",
+  "title": (cards[0].game if single else "Донат по лучшим ценам"),
+  "title_em": (cards[0].sub if single and cards[0].key != "pubg" else ""),
+  "subtitle": ("UC на ваш ID за секунды" if single and cards[0].key == "pubg" else
+               ("Алмазы, ваучеры и прокачка — моментально на ваш ID" if single else
+                "Алмазы Free Fire и UC PUBG Mobile — моментально на ваш ID")),
+  "sections": cards,
+} | tojson }}</script>
+{% endif %}
+
+<script>
+(function () {
+  const el = document.getElementById("pl-data");
+  if (!el) return;
+  const D = JSON.parse(el.textContent);
+  const W = 1080, H = D.fmt === "story" ? 1920 : 1350, PAD = 56;
+  const SANS = '"Onest", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const MONO = '"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace';
+  const GROUPS = ["", "🎫 ВАУЧЕРЫ И ПРОПУСКА", "🚀 ПРОКАЧКА", "🎁 ДРУГОЕ"];
+
+  function rr(c, x, y, w, h, r) {
+    c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
+    c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath();
+  }
+  function pill(c, text, x, y, font, pad, bg, fg, h) {
+    c.font = font; const w = c.measureText(text).width + pad * 2;
+    rr(c, x, y, w, h, h / 2); c.fillStyle = bg; c.fill();
+    c.fillStyle = fg; c.textBaseline = "middle"; c.fillText(text, x + pad, y + h / 2 + 1); c.textBaseline = "alphabetic";
+    return w;
+  }
+  // Название, которое не влезает, переносим на вторую строку
+  function lines(c, text, max) {
+    if (c.measureText(text).width <= max) return [text];
+    const words = text.split(" "); let a = "", i = 0;
+    for (; i < words.length; i++) { const t = a ? a + " " + words[i] : words[i]; if (c.measureText(t).width > max && a) break; a = t; }
+    let b = words.slice(i).join(" ");
+    while (b && c.measureText(b).width > max) b = b.slice(0, -2) + "…";
+    return b ? [a, b] : [a];
+  }
+
+  function draw() {
+    const cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    const c = cv.getContext("2d");
+    // Фон и свечение
+    const g = c.createLinearGradient(0, 0, W * .55, H);
+    g.addColorStop(0, "#1e1b4b"); g.addColorStop(.55, "#14161b"); g.addColorStop(1, "#0f1020");
+    c.fillStyle = g; c.fillRect(0, 0, W, H);
+    const glow = c.createRadialGradient(W - 30, 30, 0, W - 30, 30, 460);
+    glow.addColorStop(0, "rgba(99,102,241,.55)"); glow.addColorStop(1, "rgba(99,102,241,0)");
+    c.fillStyle = glow; c.fillRect(0, 0, W, H);
+
+    // Шапка: логотип и дата
+    let y = PAD;
+    rr(c, PAD, y, 56, 56, 12); c.fillStyle = "#4f46e5"; c.fill();
+    c.save(); c.translate(PAD, y); c.scale(56 / 32, 56 / 32);
+    c.beginPath(); c.moveTo(10, 8.5); c.lineTo(16, 8.5); c.arc(16, 16, 7.5, -Math.PI / 2, Math.PI / 2); c.lineTo(10, 23.5); c.closePath();
+    c.strokeStyle = "#fff"; c.lineWidth = 2.6; c.lineJoin = "round"; c.stroke(); c.restore();
+    c.fillStyle = "#fff"; c.font = "700 38px " + SANS; c.fillText("Donatix", PAD + 70, y + 41);
+    c.font = "400 22px " + SANS; const dt = "Цены на " + D.today; const dw = c.measureText(dt).width + 40;
+    rr(c, W - PAD - dw, y + 2, dw, 52, 26); c.strokeStyle = "rgba(255,255,255,.18)"; c.lineWidth = 1.5; c.stroke();
+    c.fillStyle = "#c7d2fe"; c.fillText(dt, W - PAD - dw + 20, y + 36);
+
+    // Заголовок
+    y += 56 + 34 + 60;
+    c.font = "700 64px " + SANS; c.fillStyle = "#fff"; c.fillText(D.title, PAD, y);
+    if (D.title_em) { const tw = c.measureText(D.title + " ").width; c.fillStyle = "#a5b4fc"; c.fillText(D.title_em, PAD + tw, y); }
+    y += 46; c.font = "400 26px " + SANS; c.fillStyle = "#c7d2fe"; c.fillText(D.subtitle, PAD, y);
+    y += 36;
+
+    // Карточки занимают всё место между заголовком и подвалом
+    const footH = 110, cardsTop = y, cardsBottom = H - PAD - footH + 16;
+    const n = D.sections.length, gap = 20;
+    const cw = (W - PAD * 2 - gap * (n - 1)) / n;
+    const single = D.single, big = single ? 27 : 21, rowH = single ? 58 : (D.fmt === "story" ? 50 : 42);
+    D.sections.forEach((s, k) => {
+      const x = PAD + k * (cw + gap);
+      rr(c, x, cardsTop, cw, cardsBottom - cardsTop, 24);
+      c.fillStyle = "rgba(255,255,255,.06)"; c.fill(); c.strokeStyle = "rgba(255,255,255,.12)"; c.lineWidth = 1.5; c.stroke();
+      const ix = x + 22, iw = cw - 44;
+      let ry = cardsTop + 48;
+      c.fillStyle = "#fff"; c.font = "700 28px " + SANS; c.fillText(s.game, ix, ry);
+      pill(c, s.sub, ix, ry + 12, "600 18px " + SANS, 12, "#4f46e5", "#fff", 32);
+      ry += 64; c.fillStyle = "rgba(255,255,255,.12)"; c.fillRect(ix, ry, iw, 1.5);
+      ry += 12;
+      // В одной игре — две колонки строк, в трёх играх — одна
+      const cols = single ? 2 : 1, colGap = 36, colW = (iw - colGap * (cols - 1)) / cols;
+      const limit = cardsBottom - 44;
+      let col = 0, shown = 0, group = 0, rowY = ry;
+      for (const p of s.packs) {
+        if (p.group !== group && p.group > 0) {
+          if (col) { col = 0; rowY += rowH; }
+          if (rowY + 40 > limit) break;
+          group = p.group;
+          c.font = "700 16px " + SANS; c.fillStyle = "#a5b4fc"; c.fillText(GROUPS[group], ix, rowY + 30); rowY += 40;
+        }
+        c.font = "700 " + big + "px " + MONO;
+        const price = p.price, pw = c.measureText(price).width;
+        c.font = "600 " + Math.round(big * .7) + "px " + MONO; const cur = " с.", curw = c.measureText(cur).width;
+        c.font = "400 " + big + "px " + SANS;
+        const ls = lines(c, p.short, colW - pw - curw - 24);
+        const h = ls.length > 1 ? rowH + big + 2 : rowH;
+        if (rowY + h > limit) break;
+        const cx = ix + col * (colW + colGap), base = rowY + rowH / 2 + big * .36;
+        c.fillStyle = "#e0e7ff"; ls.forEach((l, i) => c.fillText(l, cx, base + i * (big + 4)));
+        const nameEnd = cx + c.measureText(ls[0]).width + 8, priceX = cx + colW - pw - curw;
+        c.fillStyle = "rgba(255,255,255,.28)";
+        for (let dx = nameEnd; dx < priceX - 10; dx += 7) c.fillRect(dx, base - 4, 2.2, 2.2);
+        c.font = "700 " + big + "px " + MONO; c.fillStyle = "#fff"; c.fillText(price, priceX, base);
+        c.font = "600 " + Math.round(big * .7) + "px " + MONO; c.fillStyle = "#a5b4fc"; c.fillText(cur, priceX + pw, base);
+        shown++;
+        if (cols === 2 && col === 0 && ls.length === 1) col = 1; else { col = 0; rowY += h; }
+      }
+      if (shown < s.packs.length) {
+        c.font = "400 18px " + SANS; c.fillStyle = "#a5b4fc";
+        c.fillText("+ ещё " + (s.packs.length - shown) + " — на сайте", ix, cardsBottom - 20);
+      }
+    });
+
+    // Подвал: шаги и адрес сайта
+    let fx = PAD; const fy = H - PAD - 84;
+    for (const t of ["① ID игрока", "② Оплата: Алиф · DC · USDT", "③ Донат за секунды"]) {
+      fx += pill(c, t, fx, fy, "400 20px " + SANS, 16, "rgba(255,255,255,.08)", "#e0e7ff", 48) + 10;
+    }
+    c.font = "700 30px " + SANS; c.fillStyle = "#fff"; c.fillText(D.site, PAD, H - PAD);
+    if (D.support) {
+      const sw = c.measureText(D.site).width;
+      c.font = "500 22px " + SANS; c.fillStyle = "#c7d2fe"; c.fillText(" · " + D.support, PAD + sw, H - PAD);
+    }
+    return cv;
+  }
+
+  const stage = document.getElementById("pl-stage"), btn = document.getElementById("pl-download");
+  let blob = null;
+  async function render() {
+    if (document.fonts && document.fonts.load) {
+      // Ждём фирменные шрифты, но не дольше 3 секунд — иначе рисуем системными
+      const fonts = ["700 64px Onest", "400 26px Onest", "700 27px 'JetBrains Mono'"].map(f => document.fonts.load(f).catch(() => null));
+      await Promise.race([Promise.all(fonts), new Promise(r => setTimeout(r, 3000))]);
+    }
+    const cv = draw();
+    blob = await new Promise(r => cv.toBlob(r, "image/png"));
+    const img = new Image(); img.alt = "Прайс-лист"; img.id = "pl-image";
+    img.src = blob ? URL.createObjectURL(blob) : cv.toDataURL("image/png");
+    stage.replaceChildren(img);
+    btn.disabled = false;
+  }
+  btn.addEventListener("click", async () => {
+    const img = document.getElementById("pl-image");
+    if (!img) return;
+    // Телефон: «Поделиться» → «Сохранить изображение» или сразу в Telegram / Instagram
+    if (blob && navigator.canShare && /Android|iPhone|iPad/i.test(navigator.userAgent)) {
+      const file = new File([blob], D.file, {type: "image/png"});
+      if (navigator.canShare({files: [file]})) {
+        try { await navigator.share({files: [file]}); return; } catch (e) { if (e.name === "AbortError") return; }
+      }
+    }
+    const a = document.createElement("a");
+    a.href = img.src; a.download = D.file;
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  render();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+{% block title %}API — {{ site_name }}{% endblock %}
+{% block description %}API {{ site_name }}: заказы Telegram Stars, Premium, пополнений игр и Steam из вашего бота или сайта. Примеры на curl, Python и JavaScript, вебхуки.{% endblock %}
+{% block content %}
+<div class="docs">
+  <aside class="docs-nav" aria-label="Разделы документации">
+    <div class="label-caps">API v1</div>
+    {% for id, t in [('start', 'Быстрый старт'), ('auth', 'Ключ и адрес'), ('methods', 'Методы'), ('ids', 'ID товаров'), ('fields', 'Поля заказа'),
+                     ('check', 'Проверка аккаунта'), ('errors', 'Ошибки'), ('webhook', 'Webhook'), ('examples', 'Примеры')] %}
+    <a href="#{{ id }}">{{ t }}</a>
+    {% endfor %}
+    <a class="ext" href="/api/swagger">Swagger ↗</a>
+  </aside>
+
+  <div class="docs-body">
+    <section class="page-hero" style="margin-top:0">
+      <h1>{{ site_name }} API</h1>
+      <p>Telegram Stars и Premium, пополнения игр, Steam и подарочные карты — одним API.</p>
+    </section>
+
+    <section id="auth" class="doc-sec">
+      <div class="grid two">
+        <div class="card"><div class="label-caps">Базовый URL</div><code class="mono">{{ base_url }}/api/v1</code></div>
+        <div class="card"><div class="label-caps">Ключ</div><code class="mono">X-API-Key: dx_live_…</code>
+          <div class="hint">Создаётся в панели → API. Можно и <code>Authorization: Bearer …</code></div></div>
+      </div>
+    </section>
+
+    <section id="start" class="doc-sec">
+      <h2>Быстрый старт</h2>
+      <h3><span class="step-n">1</span>Баланс</h3>
+<pre data-lang="bash">curl -s {{ base_url }}/api/v1/balance -H "X-API-Key: $KEY"</pre>
+<pre data-lang="json" data-title="ответ">{"ok": true, "balance": "100.0000", "currency": "USD"}</pre>
+
+      <h3><span class="step-n">2</span>Товар</h3>
+<pre data-lang="bash">curl -s "{{ base_url }}/api/v1/products?kind=telegram_stars" -H "X-API-Key: $KEY"</pre>
+<pre data-lang="json" data-title="ответ">{"ok": true, "items": [{
+  "product_id": "tg-stars", "kind": "telegram_stars", "name": "Telegram Stars",
+  "unit": "star", "price_usd": "0.016605", "min_quantity": 50, "max_quantity": 10000,
+  "fields": [{"key": "telegram_username", "label": "Telegram @username", "type": "text"}]
+}]}</pre>
+
+      <h3><span class="step-n">3</span>Заказ</h3>
+      <p>Передавайте свой уникальный <code>Idempotency-Key</code> — повтор запроса не спишет деньги второй раз.</p>
+<pre data-lang="bash">curl -s -X POST {{ base_url }}/api/v1/orders \
+  -H "X-API-Key: $KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": "tg-stars", "quantity": 100, "fields": {"telegram_username": "@player"}}'</pre>
+<pre data-lang="json" data-title="ответ">{"ok": true, "order": {
+  "order_id": "dx-1042", "status": "processing", "kind": "telegram_stars",
+  "product_name": "Telegram Stars 100", "quantity": 100,
+  "total_usd": "1.6605", "delivery": null, "error": null
+}}</pre>
+
+      <h3><span class="step-n">4</span>Результат</h3>
+      <p><code>GET /orders/dx-1042</code> или webhook.</p>
+      <div class="statuses">
+        <div><span class="badge warn">processing</span><span>В работе — спрашивайте раз в 5–10 с</span></div>
+        <div><span class="badge ok">completed</span><span>Выполнен, коды — в <code>delivery</code></span></div>
+        <div><span class="badge bad">failed</span><span>Не выполнен, деньги уже на балансе</span></div>
+      </div>
+    </section>
+
+    <section id="methods" class="doc-sec">
+      <h2>Методы</h2>
+      <div class="endpoints">
+        {% for m, path, what in [
+          ('GET', '/me', 'Профиль, баланс, уровень'),
+          ('GET', '/balance', 'Баланс в USD'),
+          ('GET', '/transactions?page=1&limit=20', 'Движение денег'),
+          ('GET', '/categories', 'Игры, сервисы, бренды карт'),
+          ('GET', '/products?kind=&category_id=&q=', 'Товары с вашей ценой и регионом'),
+          ('GET', '/products/{product_id}', 'Один товар; account_check — можно ли проверить аккаунт'),
+          ('POST', '/accounts/check', 'Проверить ID игрока, получить ник'),
+          ('POST', '/orders', 'Создать заказ'),
+          ('GET', '/orders?page=&limit=&status=', 'Ваши заказы'),
+          ('GET', '/orders/{order_id}', 'Заказ со статусом и выдачей'),
+          ('GET', '/steam-gifts/games?q=', 'Поиск игр для Steam-гифтов'),
+          ('GET', '/steam-gifts/games/{appid}', 'Издания и цены по регионам'),
+        ] %}
+        <div class="ep"><span class="method {{ m | lower }}">{{ m }}</span><code>{{ path }}</code><span class="what">{{ what }}</span></div>
+        {% endfor %}
+      </div>
+      <p class="hint">kind: <code>telegram_stars</code> <code>telegram_premium</code> <code>steam_topup</code> <code>steam_gift</code> <code>topup</code> <code>gift_card</code> <code>game_key</code></p>
+    </section>
+
+    <section id="ids" class="doc-sec">
+      <h2>ID товаров</h2>
+      <p>Каждый товар и каждый пакет имеет свой <code>product_id</code> — его вы передаёте в <code>POST /orders</code>.
+        По виду ID сразу понятно, что это за товар:</p>
+      <div class="table-wrap card"><table>
+        <tr><th>Товар</th><th>product_id</th><th>Пример</th></tr>
+        <tr><td>Пополнения игр (Free Fire, PUBG Mobile и др.)</td><td><code>topup-</code> + 10 знаков</td><td><code>topup-3f9a1c2b7d</code></td></tr>
+        <tr><td>Подарочные карты</td><td><code>gc-</code> + 10 знаков</td><td><code>gc-8b21e0d4a6</code></td></tr>
+        <tr><td>Ключи игр</td><td><code>gk-</code> + 10 знаков</td><td><code>gk-5c0f7a9e13</code></td></tr>
+        <tr><td>Telegram Stars</td><td>постоянный</td><td><code>tg-stars</code></td></tr>
+        <tr><td>Telegram Premium</td><td>по сроку, в месяцах</td><td><code>tg-premium-3</code> <code>tg-premium-6</code> <code>tg-premium-12</code></td></tr>
+        <tr><td>Пополнение Steam</td><td>постоянный</td><td><code>steam-topup</code></td></tr>
+      </table></div>
+      <p>Примеры <code>topup-…</code> выше — условные. У каждой игры и каждого пакета (100 алмазов, 310 алмазов,
+        недельный ваучер…) свой ID; настоящие берите из <code>GET /products</code>. ID не меняется, пока пакет есть в продаже, —
+        его можно сохранить у себя и не запрашивать каталог перед каждым заказом.</p>
+
+      <h3><span class="step-n">1</span>Найти игру</h3>
+<pre data-lang="bash">curl -s "{{ base_url }}/api/v1/categories" -H "X-API-Key: $KEY"</pre>
+      <p>В ответе у каждой игры есть <code>category_id</code> — по нему удобно брать только её пакеты.</p>
+
+      <h3><span class="step-n">2</span>Получить пакеты и их ID</h3>
+<pre data-lang="bash">curl -s "{{ base_url }}/api/v1/products?kind=topup&q=free%20fire" -H "X-API-Key: $KEY"</pre>
+<pre data-lang="json" data-title="ответ">{"ok": true, "items": [{
+  "product_id": "topup-3f9a1c2b7d",
+  "kind": "topup", "category_id": "free_fire", "category_name": "Free Fire",
+  "region": "CIS", "region_title": "СНГ",
+  "name": "100 Diamonds", "title": "100 алмазов", "emoji": "💎",
+  "price_usd": "0.9900",
+  "fields": [{"key": "player_id", "label": "ID игрока", "type": "text"}]
+}]}</pre>
+      <p><b>Смотрите на <code>region</code>:</b> у одной игры бывают пакеты для разных регионов (например, Free Fire СНГ и
+        Индонезия) — у них разные ID, и пакет другого региона на аккаунт не зачислится.</p>
+
+      <h3><span class="step-n">3</span>Заказать пакет по его ID</h3>
+<pre data-lang="bash">curl -s -X POST {{ base_url }}/api/v1/orders \
+  -H "X-API-Key: $KEY" \
+  -H "Idempotency-Key: $(uuidgen)" \
+  -H "Content-Type: application/json" \
+  -d '{"product_id": "topup-3f9a1c2b7d", "fields": {"player_id": "1234567890"}}'</pre>
+
+      <div class="card hint">
+        <b>Бот в формате FazerCards (API v2).</b> Там пакет передаётся как <code>offer_id</code> — в него ставится тот же
+        <code>product_id</code> (<code>topup-…</code>), а в <code>category_id</code> — <code>category_id</code> игры:
+        <code>POST /api/v2/topups/order</code> с телом
+        <code>{"category_id": "free_fire", "offer_id": "topup-3f9a1c2b7d", "fields": {"player_id": "1234567890"}}</code>.
+        Список пакетов в этом формате — <code>GET /api/v2/topups/offers?category_id=…</code>.
+      </div>
+    </section>
+
+    <section id="fields" class="doc-sec">
+      <h2>Поля заказа</h2>
+      <p>Что передать в <code>fields</code>, указано в самом товаре.</p>
+      <div class="table-wrap card"><table>
+        <tr><th>Товар</th><th>fields</th></tr>
+        <tr><td>Telegram Stars, Premium</td><td><code>telegram_username</code></td></tr>
+        <tr><td>Пополнения игр</td><td><code>player_id</code>, иногда сервер или зона</td></tr>
+        <tr><td>Подарочные карты, ключи игр</td><td>нет, только <code>quantity</code></td></tr>
+        <tr><td>Пополнение Steam</td><td><code>steam_login</code> <code>currency</code> <code>amount</code></td></tr>
+        <tr><td>Steam-гифт</td><td><code>app_id</code> <code>sub_id</code> <code>region</code> <code>invite_url</code></td></tr>
+      </table></div>
+    </section>
+
+    <section id="check" class="doc-sec">
+      <h2>Проверка аккаунта</h2>
+      <p>Для многих игр можно проверить ID до заказа и показать покупателю ник. Заказ на несуществующий аккаунт не создаётся, деньги не списываются.</p>
+<pre data-lang="bash">curl -s -X POST {{ base_url }}/api/v1/accounts/check \
+  -H "X-API-Key: $KEY" -H "Content-Type: application/json" \
+  -d '{"product_id": "topup-a1b2c3d4e5", "fields": {"player_id": "5123456789"}}'</pre>
+<pre data-lang="json" data-title="ответ">{"ok": true, "supported": true, "valid": true, "player_name": "Player_6789", "region": "GLOBAL"}</pre>
+    </section>
+
+    <section id="errors" class="doc-sec">
+      <h2>Ошибки</h2>
+<pre data-lang="json" data-title="пример">{"ok": false, "error": "Недостаточно средств: нужно $1.6605, на балансе $0.5000.", "code": "insufficient_balance"}</pre>
+      <div class="table-wrap card"><table>
+        <tr><th>HTTP</th><th>code</th></tr>
+        <tr><td>400</td><td><code>missing_field</code> <code>invalid_field</code> <code>invalid_quantity</code> <code>account_not_found</code></td></tr>
+        <tr><td>401</td><td><code>unauthorized</code></td></tr>
+        <tr><td>402</td><td><code>insufficient_balance</code></td></tr>
+        <tr><td>403</td><td><code>account_inactive</code> <code>account_blocked</code></td></tr>
+        <tr><td>404</td><td><code>product_not_found</code> <code>not_found</code></td></tr>
+        <tr><td>409</td><td><code>idempotency_key_reused</code> <code>out_of_stock</code></td></tr>
+        <tr><td>429</td><td><code>rate_limited</code> — ждите <code>Retry-After</code> секунд</td></tr>
+      </table></div>
+      <p class="hint">Лимиты: 60 заказов и 120 запросов каталога в минуту.</p>
+    </section>
+
+    <section id="webhook" class="doc-sec">
+      <h2>Webhook</h2>
+      <p>Адрес указывается в панели → API. При смене статуса заказа придёт:</p>
+<pre data-lang="http">POST https://your-site.com/donatix-hook
+X-Donatix-Timestamp: 1767225600
+X-Donatix-Signature: 5d41402abc4b2a76b9719d911017c592
+
+{"event": "order.updated", "order": {"order_id": "dx-1042", "status": "completed"}}</pre>
+      <p>Подпись — HMAC-SHA256 от <code>timestamp + "." + тело</code> вашим секретом. Ответьте 2xx, иначе повторим до 5 раз.</p>
+<pre data-lang="python">import hmac, hashlib
+
+def valid(secret: str, timestamp: str, body: bytes, signature: str) -> bool:
+    mac = hmac.new(secret.encode(), timestamp.encode() + b"." + body, hashlib.sha256)
+    return hmac.compare_digest(mac.hexdigest(), signature)</pre>
+    </section>
+
+    <section id="examples" class="doc-sec">
+      <h2>Примеры</h2>
+<pre data-lang="python">import uuid, requests
+
+API = "{{ base_url }}/api/v1"
+H = {"X-API-Key": "dx_live_..."}
+
+def buy_stars(username: str, amount: int) -> dict:
+    r = requests.post(f"{API}/orders", headers={**H, "Idempotency-Key": str(uuid.uuid4())},
+                      json={"product_id": "tg-stars", "quantity": amount,
+                            "fields": {"telegram_username": username}}, timeout=30)
+    data = r.json()
+    if not data["ok"]:
+        raise RuntimeError(data["error"])
+    return data["order"]</pre>
+<pre data-lang="js">const res = await fetch("{{ base_url }}/api/v1/orders", {
+  method: "POST",
+  headers: { "X-API-Key": process.env.DONATIX_KEY, "Idempotency-Key": crypto.randomUUID(),
+             "Content-Type": "application/json" },
+  body: JSON.stringify({ product_id: "tg-stars", quantity: 100,
+                         fields: { telegram_username: "@player" } }),
+});
+const data = await res.json();
+if (!data.ok) throw new Error(data.error);</pre>
+    </section>
+  </div>
+</div>
+<script>
+  // Подсветка текущего раздела в меню документации
+  (function () {
+    var links = {}, nav = document.querySelector(".docs-nav");
+    nav.querySelectorAll("a[href^='#']").forEach(function (a) { links[a.hash.slice(1)] = a; });
+    if (!("IntersectionObserver" in window)) return;
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting || !links[e.target.id]) return;
+        nav.querySelectorAll("a.on").forEach(function (a) { a.classList.remove("on"); });
+        links[e.target.id].classList.add("on");
+        if (nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: links[e.target.id].offsetLeft - 16, behavior: "smooth" });
+      });
+    }, { rootMargin: "-30% 0px -60% 0px" });
+    document.querySelectorAll(".doc-sec[id]").forEach(function (s) { io.observe(s); });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,71 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Бот-магазин — админка{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Бот-магазин</h1>
+  <p>Покупки кнопками в Telegram — те же товары и цены, что на сайте.
+    {% if name %}Бот: <a href="https://t.me/{{ name }}" target="_blank" rel="noopener">@{{ name }}</a>{% endif %}</p>
+</section>
+
+{% if not on %}
+<div class="card">
+  <h3>Бот не подключён</h3>
+  <p>Создайте бота у <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a>, затем на сервере
+    добавьте строку в <code>donatix/.env</code> и перезапустите сайт:</p>
+  <pre class="keybox">DONATIX_SHOP_BOT_TOKEN=токен_от_BotFather</pre>
+</div>
+{% endif %}
+
+<div class="grid kpis">
+  {% for title, s in (('Сегодня', o.today), ('7 дней', o.week), ('30 дней', o.month)) %}
+  <div class="kpi"><span class="tile {{ 'ok' if loop.first else '' }}">{{ icon('bag', 20) }}</span>
+    <div class="label">Продажи через бот · {{ title }}</div>
+    <div class="value">{{ s.orders }}</div>
+    <div class="note">выручка ${{ fmt(s.revenue) }} · прибыль ${{ fmt(s.profit) }}</div>
+    <div class="note">новых покупателей: {{ s.new_users }}</div></div>
+  {% endfor %}
+  <div class="kpi"><span class="tile g5">{{ icon('users', 20) }}</span>
+    <div class="label">Людей в боте</div><div class="value">{{ o.users }}</div>
+    <div class="note">купили хоть раз: {{ o.buyers }} · получают новости: {{ o.subscribed }}</div></div>
+</div>
+
+<div class="grid dash-two">
+  <div class="card">
+    <div class="card-head"><h3>Что покупают в боте · 30 дней</h3></div>
+    <div class="table-wrap"><table>
+      <tr><th>Игра / товар</th><th class="num">Заказов</th><th class="num">Выручка</th></tr>
+      {% for t in o.top %}<tr><td>{{ t.name }}</td><td class="num">{{ t.n }}</td><td class="num">${{ fmt(t.revenue) }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">Продаж через бот пока нет.</td></tr>{% endfor %}
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Откуда пришли</h3></div>
+    <div class="table-wrap"><table>
+      <tr><th>Ссылка</th><th class="num">Людей</th></tr>
+      {% for s in o.sources %}<tr><td>{{ s.src or 'просто /start' }}</td><td class="num">{{ s.n }}</td></tr>
+      {% else %}<tr><td colspan="2" class="muted">Пока никого.</td></tr>{% endfor %}
+    </table></div>
+  </div>
+</div>
+
+<div class="card" style="margin-top:20px">
+  <div class="card-head"><h3>📣 Рассылка</h3></div>
+  <p class="muted">Уйдёт всем, кто запускал бота и не отписался. Под сообщением — кнопки «Меню» и «Отписаться».</p>
+  {% if last %}<p class="small muted">Прошлая: {{ last.at | dt }} · доставлено {{ last.sent }}{% if last.gone %} · заблокировали бота {{ last.gone }}{% endif %}</p>{% endif %}
+  <form method="post" action="/admin/shopbot/broadcast"><input type="hidden" name="csrf" value="{{ csrf }}">
+    <textarea name="text" rows="5" maxlength="3500" placeholder="🔥 Сегодня UC в PUBG дешевле! Заходите в бот 👇" required></textarea>
+    <button class="btn" style="margin-top:10px" {{ 'disabled' if not on }}>{{ icon('zap-send', 16) }}Отправить всем</button>
+  </form>
+</div>
+
+{% if name %}
+<div class="card" style="margin-top:20px">
+  <div class="card-head"><h3>🔗 Ссылки на игры — для постов в канале и Instagram</h3></div>
+  <p class="muted">Человек нажимает — бот сразу открывает эту игру. В «Откуда пришли» видно, какая ссылка привела людей.</p>
+  <div class="table-wrap"><table>
+    {% for g in games %}<tr><td>{{ g.name }}</td><td><code>https://t.me/{{ name }}?start=g{{ g.rid }}</code></td></tr>{% endfor %}
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "panel/_layout.html" %}
+{% block title %}Аналитика — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Аналитика</h1></section>
+{% set base = "/panel/stats" %}{% set show_profit = false %}
+{% include "_stats.html" %}
+{% endblock %}

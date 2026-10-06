@@ -1,0 +1,732 @@
+{
+  "source": "Donatix_Project.zip",
+  "route_count": 121,
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/v1/me",
+      "function": "me",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/balance",
+      "function": "balance",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transactions",
+      "function": "transactions",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/transactions/{transaction_id}",
+      "function": "transaction",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/categories",
+      "function": "categories",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products",
+      "function": "products",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/products/{product_id}",
+      "function": "product",
+      "module": "api"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/accounts/check",
+      "function": "check_account",
+      "module": "api"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/orders",
+      "function": "create_order",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "function": "list_orders",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orders/{order_id}",
+      "function": "get_order",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/steam-gifts/games",
+      "function": "steam_gift_games",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/steam-gifts/games/{appid}",
+      "function": "steam_gift_game",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/methods",
+      "function": "payment_methods",
+      "module": "api"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payments",
+      "function": "payment_create",
+      "module": "api"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/payments/{payment_id}/receipt",
+      "function": "payment_receipt",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments",
+      "function": "payment_list",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/payments/{payment_id}",
+      "function": "payment_one",
+      "module": "api"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "function": "home",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/privacy",
+      "function": "privacy",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/terms",
+      "function": "terms",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/manifest.webmanifest",
+      "function": "web_manifest",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/sw.js",
+      "function": "service_worker",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/offline",
+      "function": "offline_page",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/assetlinks.json",
+      "function": "asset_links",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/push/key",
+      "function": "push_key",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/push/subscribe",
+      "function": "push_subscribe",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/push/unsubscribe",
+      "function": "push_unsubscribe",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/push/test",
+      "function": "push_test",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/robots.txt",
+      "function": "robots",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/sitemap.xml",
+      "function": "sitemap",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/docs",
+      "function": "docs",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/register",
+      "function": "register_form",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/register",
+      "function": "register",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "function": "login_form",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/login",
+      "function": "login",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/login/code",
+      "function": "login_code_form",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/login/code",
+      "function": "login_code",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/google",
+      "function": "google_start",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/google/callback",
+      "function": "google_callback",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/logout",
+      "function": "logout",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel",
+      "function": "panel_home",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/timezone",
+      "function": "panel_timezone",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/stats",
+      "function": "panel_stats",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/logins",
+      "function": "panel_logins",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/catalog",
+      "function": "panel_catalog",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/telegram",
+      "function": "panel_telegram_buy",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/buy/{product_id}",
+      "function": "panel_buy_form",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/buy/{product_id}",
+      "function": "panel_buy",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/buy-many/{product_id}",
+      "function": "panel_buy_many",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/check-account/{product_id}",
+      "function": "panel_check_account",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/gamekey-regions/{product_id}",
+      "function": "panel_gamekey_regions",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/steam-gifts/games",
+      "function": "panel_gift_games",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/steam-gifts/games/{appid}",
+      "function": "panel_gift_game",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/orders",
+      "function": "panel_orders",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/orders/{public_id}",
+      "function": "panel_order",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/transactions",
+      "function": "panel_transactions",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/balance",
+      "function": "panel_balance",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/bots",
+      "function": "panel_bots",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/bots",
+      "function": "panel_bots_add",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/bots/{bot_id}/{action}",
+      "function": "panel_bots_action",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/pay-icons/{name}",
+      "function": "pay_icon",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/balance/{payment_id}/pay",
+      "function": "panel_auto_pay",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/payment/{payment_id}",
+      "function": "panel_payment_status",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/pay/binance/webhook",
+      "function": "binance_webhook",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/currency/{code}",
+      "function": "set_currency",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/rate",
+      "function": "panel_rate",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/balance",
+      "function": "panel_balance_request",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/balance/{payment_id}/boost",
+      "function": "panel_balance_boost",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/balance/{payment_id}/cancel",
+      "function": "panel_balance_cancel",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/support",
+      "function": "panel_support",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/support/code",
+      "function": "panel_support_code",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/dcoin",
+      "function": "panel_dcoin",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/data/dcoin",
+      "function": "panel_dcoin_data",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/dcoin/exchange",
+      "function": "panel_dcoin_exchange",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/referrals",
+      "function": "panel_referrals",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/notifications",
+      "function": "panel_notifications",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/panel/api",
+      "function": "panel_api",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/api/keys",
+      "function": "panel_api_create",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/api/keys/{key_id}/reveal",
+      "function": "panel_api_reveal",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/api/keys/{key_id}/revoke",
+      "function": "panel_api_revoke",
+      "module": "web"
+    },
+    {
+      "method": "POST",
+      "path": "/panel/api/webhook",
+      "function": "panel_webhook",
+      "module": "web"
+    },
+    {
+      "method": "GET",
+      "path": "/admin",
+      "function": "dashboard",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/stats",
+      "function": "stats_page",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/money",
+      "function": "money_page",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/finance",
+      "function": "finance_page",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/finance/send",
+      "function": "finance_send",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/traffic",
+      "function": "traffic_page",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/pricelist",
+      "function": "pricelist_page",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/settings",
+      "function": "settings_page",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/settings",
+      "function": "settings_save",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/supplier-balance",
+      "function": "supplier_balance_refresh",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/sync",
+      "function": "sync_now",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/bots",
+      "function": "bots_page",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/bots",
+      "function": "bots_add",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/bots/{bot_id}/{action}",
+      "function": "bots_action",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/bots/{bot_id}/log",
+      "function": "bots_log",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/catalog-sync",
+      "function": "catalog_sync_page",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/catalog-sync/start",
+      "function": "catalog_sync_start",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/catalog-sync/status",
+      "function": "catalog_sync_status",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users",
+      "function": "users",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/users/{user_id}",
+      "function": "user_detail",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/users/{user_id}",
+      "function": "user_update",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/users/{user_id}/balance",
+      "function": "user_balance",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders",
+      "function": "orders_list",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/orders/{order_id}",
+      "function": "order_detail",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/orders/{order_id}/refund",
+      "function": "order_refund",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/orders/{order_id}/complete",
+      "function": "order_complete",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/orders/{order_id}/recheck",
+      "function": "order_recheck",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/products",
+      "function": "products",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/products/{product_id}/toggle",
+      "function": "product_toggle",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/payments",
+      "function": "payments_list",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/pay-settings",
+      "function": "pay_settings",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/pay-settings",
+      "function": "pay_settings_save",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/payments/{payment_id}/receipt",
+      "function": "payment_receipt_file",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/payments/{payment_id}/confirm",
+      "function": "payment_confirm",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/payments/{payment_id}/fake",
+      "function": "payment_fake",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/payments/{payment_id}/reject",
+      "function": "payment_reject",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/errors",
+      "function": "errors",
+      "module": "admin"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/shopbot",
+      "function": "shopbot_page",
+      "module": "admin"
+    },
+    {
+      "method": "POST",
+      "path": "/admin/shopbot/broadcast",
+      "function": "shopbot_broadcast",
+      "module": "admin"
+    }
+  ]
+}

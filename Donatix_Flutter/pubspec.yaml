@@ -1,0 +1,39 @@
+name: donatix
+description: Native Donatix mobile client connected to the existing server.
+publish_to: none
+version: 1.0.0+2
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+  dio: ^5.8.0
+  flutter_secure_storage: ^9.2.4
+  html: ^0.15.6
+  decimal: ^3.2.1
+  file_picker: ^10.1.9
+  image_picker: ^1.1.2
+  url_launcher: ^6.3.1
+  crypto: ^3.0.6
+  flutter_svg: ^2.2.1
+  shared_preferences: ^2.5.3
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.3
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/logo.png
+    - assets/Onest-LICENSE.txt
+  fonts:
+    - family: Onest
+      fonts:
+        - asset: assets/Onest.ttf
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: assets/logo.png
+  adaptive_icon_background: '#4338ca'
+  adaptive_icon_foreground: assets/logo.png

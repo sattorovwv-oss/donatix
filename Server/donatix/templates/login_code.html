@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Код входа — {{ site_name }}{% endblock %}
+{% block body %}
+<main class="auth">
+  <div class="card reveal">
+    <div class="auth-head">
+      <div class="tile g1">{{ icon("shield", 24) }}</div>
+      <div><h2>Код из Telegram</h2></div>
+    </div>
+    <p class="muted">Мы отправили 6-значный код в админ-бот. Он действует 5 минут.</p>
+    {% if error %}<div class="flash error" role="alert">{{ icon('alert', 20) }}<span>{{ error }}</span></div>{% endif %}
+    <form method="post" action="/login/code">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="code">Код</label>
+      <input id="code" name="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="6"
+             pattern="[0-9]{6}" placeholder="123456" autofocus>
+      <button class="btn primary lg block" style="margin-top:18px">Войти</button>
+    </form>
+    <p class="center muted" style="margin:14px 0 0"><a href="/login">Прислать новый код</a></p>
+  </div>
+</main>
+{% endblock %}

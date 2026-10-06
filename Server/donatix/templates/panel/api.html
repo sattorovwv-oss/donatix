@@ -1,0 +1,101 @@
+{% extends "panel/_layout.html" %}
+{% block title %}API — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>API и webhook</h1><p>Подключите свой сайт или бота. <a href="/docs">Документация</a></p></section>
+
+{% if new_key %}
+<div class="card reveal" style="border-color:var(--accent)">
+  <h3>Новый ключ создан</h3>
+  <p class="muted">Скопируйте ключ целиком — около 50 символов. Его можно будет снова посмотреть в списке ниже.</p>
+  <pre class="keybox" id="new-key">{{ new_key }}</pre>
+  <button type="button" class="btn sm" data-copy="{{ new_key }}">Скопировать</button>
+</div>
+{% endif %}
+
+<div class="card reveal">
+  <h3>API-ключи</h3>
+  {% if user.status != 'active' %}
+    <p class="muted">Ключи можно создать после активации аккаунта.</p>
+  {% else %}
+  <form class="filters" method="post" action="/panel/api/keys">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div><label for="name">Название</label><input id="name" name="name" placeholder="Мой бот" maxlength="64"></div>
+    <div style="display:flex;align-items:end"><button class="btn primary block">Создать ключ</button></div>
+  </form>
+  {% endif %}
+  <div class="table-wrap" style="margin-top:16px"><table>
+    <tr><th>Название</th><th>Ключ</th><th>Создан</th><th>Использован</th><th></th></tr>
+    {% for k in keys %}
+    <tr>
+      <td>{{ k.name }}</td>
+      <td class="mono"><span class="key-val" id="kv-{{ k.id }}">{{ k.prefix }}…</span>
+        {% if not k.revoked_at %}<div class="key-tools">
+          <button type="button" class="link-btn" data-show="{{ k.id }}">Показать</button>
+          <button type="button" class="link-btn" data-kcopy="{{ k.id }}">Скопировать</button>
+          <button type="button" class="link-btn" data-test="{{ k.id }}">Проверить ключ</button>
+        </div><div class="small key-msg" id="km-{{ k.id }}" role="status"></div>{% endif %}</td>
+      <td class="small">{{ k.created_at | dt('%d.%m.%Y') }}</td>
+      <td class="small">{{ (k.last_used_at or 'ни разу')[:16] | replace('T', ' ') }}</td>
+      <td class="right">
+        {% if k.revoked_at %}<span class="badge">отозван</span>{% else %}
+        <form class="inline" method="post" action="/panel/api/keys/{{ k.id }}/revoke" onsubmit="return confirm('Отозвать ключ? Всё, что его использует, перестанет работать.')">
+          <input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm danger">Отозвать</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% else %}<tr><td colspan="5" class="muted">Ключей нет.</td></tr>{% endfor %}
+  </table></div>
+  <p class="hint">В «Ключ» видно только начало — <b>не копируйте его</b>. Нажмите «Скопировать»: в буфер попадёт ключ
+    целиком. Передавайте его в заголовке <code>X-API-Key</code>. «Проверить ключ» сразу покажет, работает ли он.</p>
+</div>
+
+<script>
+(function () {
+  var cache = {};
+  async function full(id) {
+    if (cache[id]) return cache[id];
+    var body = new FormData(); body.append("csrf", "{{ csrf }}");
+    var r = await fetch("/panel/api/keys/" + id + "/reveal", { method: "POST", body: body });
+    var d = await r.json();
+    if (!d.ok) throw new Error(d.error || "Не удалось показать ключ");
+    return (cache[id] = d.key);
+  }
+  function say(id, text, ok) {
+    var m = document.getElementById("km-" + id);
+    m.textContent = text; m.style.color = ok === false ? "var(--danger, #d33)" : ok ? "var(--ok, #1a7f4b)" : "";
+  }
+  document.addEventListener("click", async function (e) {
+    var b = e.target.closest("[data-show],[data-kcopy],[data-test]"); if (!b) return;
+    var id = b.dataset.show || b.dataset.kcopy || b.dataset.test;
+    try {
+      var key = await full(id);
+      if (b.dataset.show) { document.getElementById("kv-" + id).textContent = key; say(id, ""); }
+      if (b.dataset.kcopy) {
+        await navigator.clipboard.writeText(key); say(id, "Скопирован ключ целиком (" + key.length + " символов).", true);
+      }
+      if (b.dataset.test) {
+        say(id, "Проверяем…");
+        var r = await fetch("/api/v1/me", { headers: { "X-API-Key": key }, credentials: "omit" });
+        var d = await r.json().catch(function () { return {}; });
+        if (r.ok) say(id, "✅ Ключ работает. Если бот всё равно пишет ошибку — в нём вставлен другой ключ или адрес.", true);
+        else say(id, "❌ " + (typeof d.error === "string" ? d.error : ("Ошибка " + r.status)), false);
+      }
+    } catch (err) { say(id, err.message, false); }
+  });
+})();
+</script>
+
+<div class="card reveal">
+  <h3>Webhook</h3>
+  <p class="muted">Куда присылать уведомления, когда заказ выполнен или отменён. Необязательно.</p>
+  <form method="post" action="/panel/api/webhook">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label for="webhook_url">Адрес</label>
+    <input id="webhook_url" name="webhook_url" type="url" placeholder="https://your-site.com/donatix-hook" value="{{ user.webhook_url or '' }}">
+    <label>Секрет для проверки подписи</label>
+    <pre class="keybox">{{ user.webhook_secret }}</pre>
+    <label style="font-weight:400"><input type="checkbox" name="rotate" value="1" style="width:auto;min-height:0"> Выпустить новый секрет</label>
+    <button class="btn" style="margin-top:12px">Сохранить</button>
+  </form>
+</div>
+{% endblock %}

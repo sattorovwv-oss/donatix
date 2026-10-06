@@ -1,0 +1,4 @@
+storeFile=/absolute/path/to/owner-upload-key.jks
+storePassword=OWNER_STORE_PASSWORD
+keyAlias=upload
+keyPassword=OWNER_KEY_PASSWORD

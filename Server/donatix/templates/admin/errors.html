@@ -1,0 +1,19 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Ошибки — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Ошибки</h1><p>Заказы, которые не прошли, требуют проверки или клиент не получил webhook.</p></section>
+<div class="card table-wrap reveal"><table>
+  <tr><th>Заказ</th><th>Клиент</th><th>Товар</th><th class="num">Сумма</th><th>Статус</th><th>Что случилось</th><th>Когда</th></tr>
+  {% for o in rows %}
+  <tr>
+    <td><a href="/admin/orders/{{ o.id }}">{{ o.public_id }}</a></td>
+    <td><a href="/admin/users/{{ o.user_id }}">{{ o.login }}</a></td>
+    <td>{{ o.product_name | pack_title(o.kind) }}</td>
+    <td class="num">${{ fmt(o.total_micro) }}</td>
+    <td><span class="badge {{ {'failed': 'bad', 'attention': 'bad', 'processing': 'warn', 'completed': 'ok'}[o.status] }}">{{ status_titles[o.status] }}</span></td>
+    <td class="small">{{ o.error or ('Webhook клиента не отвечает' if o.webhook_state == 'failed' else '') }}</td>
+    <td class="small nowrap">{{ o.updated_at | dt }}</td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">Ошибок нет.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

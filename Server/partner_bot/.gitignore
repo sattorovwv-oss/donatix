@@ -1,0 +1,11 @@
+.env
+data/
+*.sqlite3
+__pycache__/
+*.pyc
+.venv/
+venv/
+# Сессия юзербота = полный доступ к Telegram владельца. В git её быть
+# не должно никогда, даже если файл лежит не в data/.
+*.session
+*.session-journal

@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.DS_Store
+
+# Секреты и данные бота — никогда не коммитить
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+.venv/
+.pytest_cache/
+
+# Donatix
+donatix/.env
+donatix/data/

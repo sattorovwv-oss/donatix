@@ -1,0 +1,54 @@
+{% extends "admin/_layout.html" %}
+{% block title %}{{ o.public_id }} — админка{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+<section class="page-hero">
+  <a class="back" href="/admin/orders">{{ icon('arrow-left', 18) }}Заказы</a>
+  <h1>{{ o.public_id }}</h1>
+  <span class="badge {{ {'completed': 'ok', 'failed': 'bad', 'processing': 'warn', 'attention': 'bad'}[o.status] }}">{{ status_titles[o.status] }}</span>
+</section>
+{% if o.error %}<div class="flash {{ 'error' if o.status in ('attention', 'failed') else 'warn' }}">{{ o.error }}</div>{% endif %}
+<div class="grid two" style="align-items:start">
+  <div class="summary card" style="padding:0">
+    <div><span class="muted">Клиент</span><span><a href="/admin/users/{{ o.user_id }}">{{ o.login }}</a></span></div>
+    <div><span class="muted">Товар</span><span>{{ o.product_name | pack_title(o.kind) }} <span class="mono small muted">{{ o.product_id }}</span></span></div>
+    {% for k, v in fields.items() %}<div><span class="muted">{{ k }}</span><span class="mono">{{ v }}</span></div>{% endfor %}
+    <div><span class="muted">Количество</span><span>{{ o.quantity }}</span></div>
+    <div><span class="muted">Источник</span><span>{{ o.source }}</span></div>
+    <div><span class="muted">Заказ у поставщика</span><span class="mono">{{ o.supplier_order_id or '—' }} {{ o.supplier_status or '' }}</span></div>
+    <div><span class="muted">Ключ идемпотентности</span><span class="mono small">{{ o.supplier_idem_key }}</span></div>
+    <div><span class="muted">Попыток отправки</span><span>{{ o.supplier_attempts }}</span></div>
+    <div><span class="muted">Webhook</span><span>{{ o.webhook_state }}</span></div>
+    <div><span class="muted">Создан / обновлён</span><span class="small">{{ o.created_at | dt('%d.%m.%Y %H:%M:%S') }} / {{ o.updated_at | dt('%d.%m.%Y %H:%M:%S') }}</span></div>
+    <div><span class="muted">Закупка</span><span>${{ fmt(o.cost_micro) }}</span></div>
+    <div class="total"><span>Клиент заплатил</span><span>${{ fmt(o.total_micro) }}</span></div>
+  </div>
+  <div>
+    {% if delivery_pretty %}<div class="card reveal"><h3>Выдача</h3><pre class="keybox">{{ delivery_pretty }}</pre></div>{% endif %}
+    {% if o.status in ('processing', 'attention') %}
+    <div class="card reveal">
+      <h3>Действия</h3>
+      <p class="muted small">Сначала проверьте заказ в панели FazerCards
+        {% if o.supplier_order_id %}(номер <b class="mono">{{ o.supplier_order_id }}</b>){% else %}(ищите по получателю и времени){% endif %}.</p>
+      {% if o.supplier_order_id %}
+      <form method="post" action="/admin/orders/{{ o.id }}/recheck"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn block">Запросить статус у поставщика</button></form>
+      {% endif %}
+      <form method="post" action="/admin/orders/{{ o.id }}/complete" style="margin-top:16px">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label for="note">Выполнен у поставщика — сообщение клиенту</label>
+        <input id="note" name="note" placeholder="Зачислено на аккаунт / код: …">
+        <button class="btn block" style="margin-top:8px">Отметить выполненным</button>
+      </form>
+      <form method="post" action="/admin/orders/{{ o.id }}/refund" style="margin-top:16px"
+            onsubmit="return confirm('Отменить заказ и вернуть ${{ fmt(o.total_micro) }} клиенту?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label for="reason">Не выполнен — причина для клиента</label>
+        <input id="reason" name="reason" placeholder="Неверный username">
+        <button class="btn danger block" style="margin-top:8px">Отменить и вернуть деньги</button>
+      </form>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

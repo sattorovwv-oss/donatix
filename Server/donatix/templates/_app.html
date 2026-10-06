@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, logo, theme_button %}
+{% block header %}
+<header class="top">
+  <div class="bar">
+    <button class="icon-btn only-sm" type="button" aria-label="Открыть меню" onclick="dxMenu(true)">{{ icon('menu') }}</button>
+    <a class="brand" href="/">{{ logo() }}<span class="hide-sm">{{ site_name }}</span></a>
+    <nav class="nav">
+      {% if user.guest %}
+      {% set here = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+      <span class="cur-switch" role="group" aria-label="Валюта">
+        <a href="/currency/USD" class="{{ 'on' if cur_code != 'TJS' }}">USD</a><a href="/currency/TJS" class="{{ 'on' if cur_code == 'TJS' }}">TJS</a>
+      </span>
+      <a class="btn sm hide-sm" href="/login?next={{ here | urlencode }}">Войти</a>
+      <a class="btn sm primary" href="/register?next={{ here | urlencode }}">Регистрация</a>
+      {% else %}
+      <span class="hide-sm hide-app muted small" style="margin-right:6px">{{ user.login }}</span>
+      <a class="icon-btn bell" href="/panel/notifications" aria-label="Уведомления{{ ': ' ~ unread if unread }}">{{ icon('bell') }}{% if unread %}<span class="dot-count">{{ unread if unread < 100 else '99+' }}</span>{% endif %}</a>
+      <span class="cur-switch" role="group" aria-label="Валюта">
+        <a href="/currency/USD" class="{{ 'on' if cur_code != 'TJS' }}">USD</a><a href="/currency/TJS" class="{{ 'on' if cur_code == 'TJS' }}">TJS</a>
+      </span>
+      {{ theme_button() }}
+      <form class="inline hide-app" method="post" action="/logout">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="icon-btn" aria-label="Выйти" title="Выйти">{{ icon('logout') }}</button>
+      </form>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+{% endblock %}
+{% block body %}
+{% set current = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+<div class="shell">
+  <aside class="side" id="side">
+    <div class="drawer-head">
+      <a class="brand" href="/">{{ logo() }}{{ site_name }}</a>
+      <button class="icon-btn" type="button" aria-label="Закрыть меню" onclick="dxMenu(false)">{{ icon('x') }}</button>
+    </div>
+    <div class="side-scroll">
+      {% block side_top %}{% endblock %}
+      <nav aria-label="Разделы">{% block sidenav %}{% endblock %}</nav>
+      <button class="nav-item install-app" type="button" data-install style="width:100%;border:0;background:none;font:inherit;cursor:pointer;gap:10px;align-items:center">📲 <span>Установить приложение</span></button>
+      {% if user and not user.guest %}
+      <form class="side-logout" method="post" action="/logout" onsubmit="return confirm('Выйти из аккаунта?')">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="nav-item" type="submit">{{ icon('logout', 18) }}<span>Выйти · {{ user.login }}</span></button>
+      </form>
+      {% endif %}
+    </div>
+  </aside>
+  <main id="main">
+    {% if user and not user.guest %}
+    <div class="push-ask" id="push-ask" hidden role="region" aria-label="Уведомления">
+      <span class="pa-ico">🔔</span>
+      <span class="grow"><b>Включите уведомления</b><small>Сразу узнаете, когда заказ выполнен и баланс пополнен — даже если приложение закрыто.</small></span>
+      <button class="btn primary sm" type="button" data-push-on>Включить</button>
+      <button class="icon-btn pa-x" type="button" aria-label="Не сейчас" data-push-later>{{ icon('x', 18) }}</button>
+    </div>
+    {% endif %}
+    {% block notice %}{% endblock %}
+    {% for f in flashes %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% set tab = request.url.path %}
+<nav class="tabbar" aria-label="Быстрые разделы">
+  <a href="/panel" class="{{ 'on' if tab == '/panel' }}">{{ icon('home', 22) }}<span>Главная</span></a>
+  <a href="/panel/catalog" class="{{ 'on' if tab.startswith('/panel/catalog') or tab.startswith('/panel/buy') }}">{{ icon('grid', 22) }}<span>Каталог</span></a>
+  <a href="/panel/balance" class="tab-main {{ 'on' if tab.startswith('/panel/balance') }}">{{ icon('plus', 24) }}<span>Пополнить</span></a>
+  <a href="/panel/orders" class="{{ 'on' if tab.startswith('/panel/orders') }}">{{ icon('bag', 22) }}<span>Заказы</span></a>
+  <button type="button" onclick="dxMenu(true)">{{ icon('menu', 22) }}<span>Ещё</span></button>
+</nav>
+<script>
+  // Push-уведомления: подписка этого устройства (телефон, приложение, компьютер)
+  window.dxPush = (function () {
+    var csrf = "{{ csrf }}", ok = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
+      && location.protocol === "https:";
+    function key(b64) {
+      var pad = "=".repeat((4 - b64.length % 4) % 4), raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); });
+    }
+    function post(url, data) {
+      var body = new FormData(); body.append("csrf", csrf);
+      Object.keys(data || {}).forEach(function (k) { body.append(k, data[k]); });
+      return fetch(url, { method: "POST", body: body, credentials: "same-origin" }).then(function (r) { return r.json(); });
+    }
+    async function subscribe() {
+      var reg = await navigator.serviceWorker.ready;
+      var info = await (await fetch("/panel/push/key", { credentials: "same-origin" })).json();
+      if (!info.ok) throw new Error("Уведомления на сервере ещё не включены");
+      var sub = await reg.pushManager.getSubscription() ||
+        await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(info.key) });
+      var j = sub.toJSON();
+      return post("/panel/push/subscribe", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+    }
+    async function enable() {
+      if (!ok) throw new Error("Этот браузер не поддерживает уведомления. Откройте сайт в Chrome или приложении.");
+      var perm = await Notification.requestPermission();
+      if (perm !== "granted") throw new Error("Уведомления запрещены. Разрешите их в настройках телефона для Donatix.");
+      return subscribe();
+    }
+    async function disable() {
+      var reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+      if (sub) { await post("/panel/push/unsubscribe", { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+    }
+    async function state() {
+      if (!ok) return "unsupported";
+      if (Notification.permission === "denied") return "denied";
+      var reg = await navigator.serviceWorker.getRegistration();
+      var sub = reg && await reg.pushManager.getSubscription();
+      return sub && Notification.permission === "granted" ? "on" : "off";
+    }
+    // Разрешение уже дано — тихо обновляем подписку этого устройства раз за сессию
+    if (ok && Notification.permission === "granted") {
+      try { if (!sessionStorage.getItem("dx-push-sync")) { sessionStorage.setItem("dx-push-sync", "1"); subscribe().catch(function () {}); } } catch (e) {}
+    }
+    // Плашка «Включите уведомления»: показываем, если ещё не спрашивали и человек не нажал «Не сейчас» (на 7 дней)
+    var ask = document.getElementById("push-ask");
+    if (ask && ok && Notification.permission === "default") {
+      var later = 0; try { later = +localStorage.getItem("dx-push-later") || 0; } catch (e) {}
+      if (Date.now() - later > 7 * 864e5) ask.hidden = false;
+      ask.addEventListener("click", function (e) {
+        if (e.target.closest("[data-push-later]")) {
+          ask.hidden = true; try { localStorage.setItem("dx-push-later", String(Date.now())); } catch (er) {}
+        } else if (e.target.closest("[data-push-on]")) {
+          enable().then(function () { ask.innerHTML = "<span class='pa-ico'>✅</span><b>Уведомления включены</b>"; setTimeout(function () { ask.hidden = true; }, 2500); })
+            .catch(function (err) { ask.querySelector("small").textContent = err.message; });
+        }
+      });
+    }
+    return { supported: ok, enable: enable, disable: disable, state: state, test: function () { return post("/panel/push/test"); } };
+  })();
+
+  // «Установить приложение»: Chrome сам предлагает поставить сайт как приложение — показываем кнопку
+  (function () {
+    var prompt = null, d = document.documentElement;
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); prompt = e;
+      if (!d.classList.contains("is-app")) d.classList.add("can-install");
+    });
+    window.addEventListener("appinstalled", function () { d.classList.remove("can-install"); prompt = null; });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("[data-install]") || !prompt) return;
+      prompt.prompt();
+      prompt.userChoice.finally(function () { prompt = null; d.classList.remove("can-install"); });
+    });
+  })();
+
+  // Потянуть вниз — обновить (в приложении нет кнопки «обновить», а статус заказа хочется проверить)
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains("is-app") || !("ontouchstart" in window)) return;
+    var ind = document.createElement("div"), y0 = null, dy = 0;
+    ind.className = "ptr";
+    ind.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
+    document.body.appendChild(ind);
+    window.addEventListener("touchstart", function (e) {
+      y0 = window.scrollY <= 0 && !d.classList.contains("menu-open") ? e.touches[0].clientY : null; dy = 0;
+    }, { passive: true });
+    window.addEventListener("touchmove", function (e) {
+      if (y0 === null) return;
+      dy = Math.max(0, Math.min(120, e.touches[0].clientY - y0));
+      ind.style.transition = "none";
+      ind.style.transform = "translateY(" + (dy * 0.8 - 50) + "px)";
+      ind.classList.toggle("ready", dy > 80);
+    }, { passive: true });
+    window.addEventListener("touchend", function () {
+      if (y0 === null) return;
+      ind.style.transition = "";
+      if (dy > 80) { ind.classList.add("spin"); ind.style.transform = "translateY(24px)"; location.reload(); }
+      else { ind.style.transform = "translateY(-50px)"; }
+      y0 = null;
+    });
+  })();
+
+  // Как в приложении: шапка прячется при прокрутке вниз, лёгкая вибрация на вкладках, шторка «Ещё» смахивается вниз
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains("app-ui")) return;
+    var lastY = window.scrollY, ticking = false;
+    window.addEventListener("scroll", function () {
+      if (ticking) return; ticking = true;
+      requestAnimationFrame(function () {
+        var y = window.scrollY, down = y > lastY + 4, up = y < lastY - 4;
+        if (down && y > 80) d.classList.add("hdr-hide"); else if (up || y < 40) d.classList.remove("hdr-hide");
+        lastY = y; ticking = false;
+      });
+    }, { passive: true });
+    document.addEventListener("click", function (e) {
+      if (e.target.closest(".tabbar a, .tabbar button, .btn.primary") && navigator.vibrate) { try { navigator.vibrate(8); } catch (er) {} }
+      if (d.classList.contains("menu-open") && !e.target.closest("#side") && !e.target.closest(".tabbar")) dxMenu(false);
+    });
+    var side = document.getElementById("side"), head = side && side.querySelector(".drawer-head"), y0 = null;
+    if (head) {
+      head.addEventListener("touchstart", function (e) { y0 = e.touches[0].clientY; side.classList.add("dragging"); }, { passive: true });
+      head.addEventListener("touchmove", function (e) {
+        if (y0 === null) return;
+        side.style.setProperty("--sheet-drag", Math.max(0, e.touches[0].clientY - y0) + "px");
+      }, { passive: true });
+      head.addEventListener("touchend", function (e) {
+        var dy = (e.changedTouches[0] || {}).clientY - y0; y0 = null;
+        side.classList.remove("dragging"); side.style.removeProperty("--sheet-drag");
+        if (dy > 90) dxMenu(false);
+      });
+    }
+  })();
+
+  function dxMenu(open) {
+    document.getElementById("side").classList.toggle("open", open);
+    document.documentElement.classList.toggle("menu-open", open);
+    document.body.classList.toggle("menu-open", open);
+  }
+  // «Копировать»: clipboard API, а где его нет (http, встроенный браузер Telegram) — через выделение
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    e.preventDefault();
+    var text = btn.getAttribute("data-copy"), label = btn.innerHTML;
+    var done = function () {
+      btn.textContent = "✓ Скопировано"; btn.classList.add("copied");
+      setTimeout(function () { btn.innerHTML = label; btn.classList.remove("copied"); }, 2000);
+    };
+    var fallback = function () {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+      var ok = false; try { ok = document.execCommand("copy"); } catch (err) {}
+      document.body.removeChild(ta);
+      if (ok) done(); else window.prompt("Скопируйте код:", text);
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  });
+</script>
+{% endblock %}
+{% block footer %}{% endblock %}

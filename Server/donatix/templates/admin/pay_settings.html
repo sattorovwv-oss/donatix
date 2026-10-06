@@ -1,0 +1,75 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Реквизиты — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Реквизиты и пополнение</h1><p>Меняйте реквизиты, добавляйте свои способы. Выключенный способ клиенты не видят.</p></section>
+<form method="post" action="/admin/pay-settings" class="pay-form" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="n" value="{{ conf.all_methods | length }}">
+
+  <div class="card">
+    <h3>Условия</h3>
+    <div class="grid three" style="gap:12px">
+      <div><label for="min_tjs">Минимум пополнения, сомони</label>
+        <input id="min_tjs" name="min_tjs" inputmode="decimal" required value="{{ conf.min_tjs }}">
+        <div class="hint">0 — без минимума, любая сумма{% if conf.min_tjs > 0 %} · сейчас ≈ ${{ conf.min_usd }}{% endif %}</div></div>
+      <div><label for="tjs_rate">Курс: сомони за 1 $</label>
+        <input id="tjs_rate" name="tjs_rate" inputmode="decimal" required value="{{ conf.tjs_rate }}" {{ 'readonly' if rate.auto and rate.market }}>
+        <div class="hint">{% if rate.auto and rate.market %}Рынок {{ rate.market }} + запас {{ rate.margin_pct }}% · {{ rate.source }}{% if rate.age_seconds is not none %} · {{ rate.age_seconds // 60 }} мин назад{% endif %}{% elif rate.auto %}Курс ещё не получен — пока действует этот{% else %}Задаётся вручную{% endif %}</div>
+        {% if rate.auto and rate.error %}<div class="hint" style="color:var(--bad, #c0392b)">⚠️ Последнее обновление не удалось, держим прежний курс</div>{% endif %}</div>
+      <div><label for="rate_margin">Запас к курсу, %</label>
+        <input id="rate_margin" name="rate_margin" inputmode="decimal" value="{{ rate.margin_pct }}">
+        <label class="switch" style="margin-top:8px"><input type="checkbox" name="rate_auto" value="1" {{ 'checked' if rate.auto }}><span>Курс автоматически (каждые 5 мин)</span></label>
+        <div class="hint">Запас покрывает разницу с курсом банков — чтобы не уйти в минус</div></div>
+      <div><label for="low_usd">Предупреждать клиента, если на балансе меньше, $</label>
+        <input id="low_usd" name="low_usd" inputmode="decimal" value="{{ conf.low_usd }}">
+        <div class="hint">0 — не предупреждать</div></div>
+    </div>
+  </div>
+
+  <div class="section-title"><h2>Способы оплаты</h2></div>
+  <div class="list">
+    {% for m in conf.all_methods + [{'code': '', 'title': '', 'currency': 'TJS', 'choice': 'TJS', 'details': '', 'enabled': True}] %}
+    {% set i = loop.index0 %}{% set new = not m.code %}
+    <div class="card pm {{ 'pm-new' if new }} {{ 'off' if not m.enabled and not new }}">
+      <input type="hidden" name="m{{ i }}_code" value="{{ m.code }}">
+      <div class="pm-head">
+        {% if m.icon %}<img class="pm-logo" src="/pay-icons/{{ m.icon }}" alt="" width="36" height="36">
+        {% else %}<span class="tile sm {{ 'g4' if m.currency == 'TJS' else 'g5' }}">{{ icon('plus' if new else 'wallet', 18) }}</span>{% endif %}
+        <b>{{ 'Новый способ оплаты' if new else m.title }}</b>
+        {% if not new %}
+        <label class="switch"><input type="checkbox" name="m{{ i }}_enabled" value="1" {{ 'checked' if m.enabled }}><span>Показывать</span></label>
+        {% else %}<input type="hidden" name="m{{ i }}_enabled" value="1">{% endif %}
+      </div>
+      <div class="pm-grid">
+        <div><label for="m{{ i }}_title">Название</label>
+          <input id="m{{ i }}_title" name="m{{ i }}_title" maxlength="60" value="{{ m.title }}" placeholder="{{ 'Например: Humo, Visa, Payeer' if new }}"></div>
+        <div><label for="m{{ i }}_currency">Валюта и сеть</label>
+          <select id="m{{ i }}_currency" name="m{{ i }}_currency">
+            {% for c, t in currencies %}<option value="{{ c }}" {{ 'selected' if c == m.choice }}>{{ t }}</option>{% endfor %}
+          </select></div>
+      </div>
+      <label for="m{{ i }}_details">Реквизиты — это увидит клиент</label>
+      <textarea id="m{{ i }}_details" name="m{{ i }}_details" rows="2" maxlength="1000" placeholder="Номер карты или телефона, имя получателя / адрес кошелька">{{ m.details }}</textarea>
+      <div class="hint">Для USDT выберите сеть: клиент увидит её крупно и предупреждение «только в этой сети». TRC20 — адрес начинается с T, BEP20 — с 0x.</div>
+      <div class="pm-icon-row">
+        <label for="m{{ i }}_auto">Автозачисление <span class="muted">— баланс пополнится сам, без чека</span></label>
+        <select id="m{{ i }}_auto" name="m{{ i }}_auto">
+          <option value="" {{ 'selected' if not m.auto }}>Нет — вручную по чеку</option>
+          <option value="trc20" {{ 'selected' if m.auto == 'trc20' }}>USDT TRC20 — сайт сам видит перевод в блокчейне (адрес T… в реквизитах)</option>
+          <option value="bybit" {{ 'selected' if m.auto == 'bybit' }}>Bybit — перевод по UID, сайт сам видит поступление (UID в реквизитах{{ '' if bybit_ready else ', сначала ключ Bybit' }})</option>
+          <option value="binance" {{ 'selected' if m.auto == 'binance' }}>Binance Pay{{ '' if binance_ready else ' — сначала добавьте ключи мерчанта' }}</option>
+        </select>
+      </div>
+      <div class="pm-icon-row">
+        <label for="m{{ i }}_icon">Иконка / логотип <span class="muted">— PNG, JPG или WebP, лучше квадрат 200×200</span></label>
+        <input id="m{{ i }}_icon" name="m{{ i }}_icon" type="file" accept="image/png,image/jpeg,image/webp">
+        {% if m.icon %}<label class="del"><input type="checkbox" name="m{{ i }}_icon_del" value="1"> Убрать иконку</label>{% endif %}
+      </div>
+      {% if not new %}<label class="del"><input type="checkbox" name="m{{ i }}_delete" value="1"> Удалить способ</label>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  <button class="btn primary lg block save-bar">Сохранить</button>
+</form>
+{% endblock %}

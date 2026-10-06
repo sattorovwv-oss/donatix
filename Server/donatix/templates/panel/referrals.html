@@ -1,0 +1,50 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Пригласить друзей — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Пригласить друзей</h1>
+  <p>Поделитесь ссылкой. Кто зарегистрируется по ней, закрепится за вами навсегда — и с каждого его выполненного
+    заказа вы получаете бонус на баланс автоматически.</p>
+</section>
+
+{% if percent <= 0 %}
+<div class="card empty">Реферальная программа сейчас выключена.</div>
+{% else %}
+<div class="card ref-card">
+  <div class="label-caps">Ваша ссылка</div>
+  <div class="ref-link"><code id="ref-link">{{ link }}</code>
+    <button class="btn primary sm" type="button" data-copy="{{ link }}">{{ icon('copy', 16) }}Копировать</button></div>
+  <p class="muted small">Бонус — с каждого выполненного заказа приглашённого.
+    Начисляется сразу после выполнения заказа, без заявок.</p>
+</div>
+
+<div class="grid kpis ref-kpis">
+  <div class="kpi"><span class="tile g5">{{ icon('users', 20) }}</span>
+    <div class="label">Приглашено</div><div class="value">{{ s.invited }}</div>
+    <div class="note">из них покупали: {{ s.active }}</div></div>
+  <div class="kpi"><span class="tile ok">{{ icon('wallet', 20) }}</span>
+    <div class="label">Заработано</div><div class="value">{{ money(s.earned) }}</div>
+    <div class="note">уже на вашем балансе</div></div>
+</div>
+
+<h2 class="section-title">Начисления</h2>
+<div class="list">
+  {% for r in s.rows %}
+  <div class="item"><div class="tile sm ok">🎁</div>
+    <div class="grow"><div class="title">+{{ money(r.amount_micro) }} · {{ r.login }}</div>
+      <div class="sub">заказ {{ r.public_id }} · {{ r.created_at | dt }}</div></div></div>
+  {% else %}<div class="card empty">Пока нет. Как только приглашённый сделает заказ — бонус появится здесь.</div>{% endfor %}
+</div>
+
+{% if s.friends %}
+<h2 class="section-title">Приглашённые</h2>
+<div class="list">
+  {% for f in s.friends %}
+  <div class="item"><div class="tile sm">{{ icon('users', 18) }}</div>
+    <div class="grow"><div class="title">{{ f.login }}</div><div class="sub">с {{ f.created_at | dt('%d.%m.%Y') }}</div></div></div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

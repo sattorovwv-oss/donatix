@@ -1,0 +1,109 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Учёт денег — админка{% endblock %}
+{% macro both(micro) %}${{ usd(micro) }}{% if s.rate %} <small class="muted">≈ {{ tjs(micro, s.rate) }} с.</small>{% endif %}{% endmacro %}
+{% macro big(micro) %}${{ usd(micro) }}{% if s.rate %}<small class="kpi-tjs">≈ {{ tjs(micro, s.rate) }} с.</small>{% endif %}{% endmacro %}
+{% macro cell(micro) %}{% if micro %}{{ usd(micro) }}{% else %}<span class="muted">—</span>{% endif %}{% endmacro %}
+{% block content %}
+<section class="page-hero">
+  <h1>Учёт денег</h1>
+  <p>Все движения денег за период: сколько пришло, сколько продали и куда ушло — поставщику, рефералам,
+    в копилку D-коина, кассирам и вам. Сутки — с 00:00 до 23:59 · {{ site_tz }}.</p>
+</section>
+
+<form class="card filters money-filter" method="get" action="/admin/money">
+  {% include "_period_filter.html" %}
+  <div class="full"><button class="btn primary sm" type="submit">Показать</button>
+    <span class="muted small">{{ m.start.strftime('%d.%m.%Y') }} — {{ (m.end - m.end.resolution).strftime('%d.%m.%Y') }}</span></div>
+</form>
+
+<div class="grid kpis money-kpis">
+  <div class="kpi"><span class="tile g2">{{ icon('wallet', 20) }}</span>
+    <div class="label">Поступило</div><div class="value">{{ big(s.received) }}</div>
+    <div class="note">{{ s.payments }} пополн. · на карты ${{ usd(s.to_card) }}{% if s.crypto %} · крипта ${{ usd(s.crypto) }}{% endif %}</div></div>
+  <div class="kpi"><span class="tile g5">{{ icon('bag', 20) }}</span>
+    <div class="label">Продано</div><div class="value">{{ big(s.revenue) }}</div>
+    <div class="note">{{ s.orders }} выполненных заказов</div></div>
+  <div class="kpi"><span class="tile">{{ icon('chart', 20) }}</span>
+    <div class="label">Прибыль с продаж</div><div class="value">{{ big(s.gross_profit) }}</div>
+    <div class="note">продажи − закупка ${{ usd(s.cost) }}</div></div>
+  <div class="kpi money-own"><span class="tile ok">{{ icon('check', 20) }}</span>
+    <div class="label">Вам чистыми</div><div class="value">{{ big(s.owner_profit) }}</div>
+    <div class="note">после рефералов, D-коина и кассиров</div></div>
+</div>
+
+<section class="card money-flow">
+  <div class="card-head"><h3>Куда ушли деньги от продаж</h3><span class="muted small">из ${{ usd(s.revenue) }}</span></div>
+  <div class="mf-bar" role="img" aria-label="Распределение денег от продаж">
+    {% for f in m.flow %}{% if f.pct > 0 %}<span class="mf-{{ f.key }}" style="width: {{ f.pct }}%" title="{{ f.label }}: ${{ usd(f.micro) }}"></span>{% endif %}{% endfor %}
+  </div>
+  <div class="mf-legend">
+    {% for f in m.flow %}
+    <div class="mf-item"><i class="mf-{{ f.key }}"></i><span>{{ f.label }}</span><b>${{ usd(f.micro) }}</b><small>{{ f.pct }}%</small></div>
+    {% endfor %}
+  </div>
+</section>
+
+<div class="grid two money-side">
+  <section class="card">
+    <h3>Расходы за период</h3>
+    <div class="fin-rows exp">
+      <div><span>🎁 Бонусы рефералам</span><b>{{ both(s.referral) }}</b></div>
+      <div><span>🪙 В копилку D-коина</span><b>{{ both(s.dcoin) }}</b></div>
+      {% for c in s.cashiers %}<div><span>👤 Кассир {{ c.name }} ({{ c.percent }}%)</span><b>{{ both(c.share) }}</b></div>{% endfor %}
+      {% if not s.cashiers %}<div><span>👤 Кассиры</span><b class="muted">нет</b></div>{% endif %}
+      <div class="total"><span>Итого расходов</span><b>{{ both(s.referral + s.dcoin + s.cashiers_total) }}</b></div>
+    </div>
+  </section>
+  <section class="card">
+    <h3>Прочие движения</h3>
+    <div class="fin-rows">
+      <div><span>↩️ Возвраты клиентам ({{ s.refunds }})</span><b>${{ usd(s.refunded) }}</b></div>
+      <div><span>🔄 Обмен D-коинов на баланс ({{ s.exchanges }})</span><b>${{ usd(s.exchanged) }}</b></div>
+      <div><span>✍️ Начислено вручную</span><b>${{ usd(s.manual_credit) }}</b></div>
+      <div><span>➡️ Отправить поставщику</span><b>${{ usd(s.to_supplier) }}</b></div>
+    </div>
+    <div class="label-caps" style="margin-top:14px">Сейчас</div>
+    <div class="fin-rows">
+      <div><span>👛 Деньги клиентов на балансах</span><b>${{ usd(s.clients_balance) }}</b></div>
+      <div><span>🪙 В копилке D-коина</span><b>${{ usd(m.dcoin_pool) }}</b></div>
+      <div><span>🪙 D-коинов у людей</span><b>{{ m.dcoin_coins }} D</b></div>
+      <div><span>🏦 Баланс поставщика</span><b>{{ '$' ~ s.supplier_balance if s.supplier_balance else '—' }}</b></div>
+    </div>
+  </section>
+</div>
+
+<section class="card money-days">
+  <div class="card-head"><h3>По {{ 'месяцам' if m.by_month else 'дням' }}</h3><span class="muted small">в долларах</span></div>
+  <div class="table-wrap">
+    <table class="money-table">
+      <thead><tr>
+        <th>{{ 'Месяц' if m.by_month else 'День' }}</th><th class="num">Поступило</th><th class="num">Продано</th>
+        <th class="num">Закупка</th><th class="num">Прибыль</th><th class="num">Рефералам</th><th class="num">D-коин</th>
+        {% for c in m.cashiers %}<th class="num">{{ c.name }}</th>{% endfor %}
+        <th class="num">Возвраты</th><th class="num">Вам</th>
+      </tr></thead>
+      <tbody>
+        {% for r in m.rows %}
+        <tr>
+          <td class="nowrap">{{ r.label }}</td><td class="num">{{ cell(r.received) }}</td><td class="num">{{ cell(r.revenue) }}</td>
+          <td class="num">{{ cell(r.cost) }}</td><td class="num">{{ cell(r.gross_profit) }}</td>
+          <td class="num">{{ cell(r.referral) }}</td><td class="num">{{ cell(r.dcoin) }}</td>
+          {% for c in m.cashiers %}<td class="num">{{ cell(r.shares.get(c.tg_id, 0)) }}</td>{% endfor %}
+          <td class="num">{{ cell(r.refunded) }}</td>
+          <td class="num"><b class="{{ 'bad' if r.owner_profit < 0 else 'ok-text' if r.owner_profit else '' }}">{{ cell(r.owner_profit) }}</b></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr>
+        <th>Итого</th><th class="num">{{ usd(s.received) }}</th><th class="num">{{ usd(s.revenue) }}</th>
+        <th class="num">{{ usd(s.cost) }}</th><th class="num">{{ usd(s.gross_profit) }}</th>
+        <th class="num">{{ usd(s.referral) }}</th><th class="num">{{ usd(s.dcoin) }}</th>
+        {% for c in m.cashiers %}<th class="num">{{ usd((s.cashiers | selectattr('tg_id', 'equalto', c.tg_id) | first).share) }}</th>{% endfor %}
+        <th class="num">{{ usd(s.refunded) }}</th><th class="num">{{ usd(s.owner_profit) }}</th>
+      </tr></tfoot>
+    </table>
+  </div>
+  <p class="hint">Кассирам — их доля от прибыли за пополнения через их банки. «Вам» = прибыль − рефералы − D-коин − кассиры.</p>
+</section>
+{% endblock %}

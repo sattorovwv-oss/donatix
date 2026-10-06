@@ -1,0 +1,77 @@
+{% extends "admin/_layout.html" %}
+{% block title %}{{ c.login }} — админка{% endblock %}
+{% block content %}
+{% from "_icons.html" import icon %}
+<section class="page-hero">
+  <a class="back" href="/admin/users">{{ icon('arrow-left', 18) }}Клиенты</a>
+  <h1>{{ c.login }}</h1>
+  <p>{{ c.email }} · с {{ c.created_at | dt('%d.%m.%Y') }}{% if c.project %} · {{ c.project }}{% endif %}</p>
+</section>
+<div class="grid two">
+  <div class="card reveal">
+    <h3>Доступ и цены</h3>
+    <form method="post" action="/admin/users/{{ c.id }}">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="status">Статус</label>
+      <select id="status" name="status">
+        {% for s in ['pending', 'active', 'blocked'] %}<option value="{{ s }}" {{ 'selected' if s == c.status }}>{{ status_titles[s] }}</option>{% endfor %}
+      </select>
+      <label for="tier">Уровень</label>
+      <select id="tier" name="tier">
+        {% for t in tiers %}<option value="{{ t }}" {{ 'selected' if t == c.tier }}>{{ t }} (+{{ markups[t] }}%)</option>{% endfor %}
+      </select>
+      <label for="markup_override">Своя наценка, % <span class="muted">(пусто — по уровню; Stars, Premium и Steam — по отдельной наценке из настроек, если она задана)</span></label>
+      <input id="markup_override" name="markup_override" value="{{ c.markup_override or '' }}" placeholder="например 5">
+      <div class="hint">Сейчас действует: +{{ effective_markup }}%</div>
+      <button class="btn primary" style="margin-top:12px">Сохранить</button>
+    </form>
+  </div>
+  <div class="card reveal">
+    <h3>Баланс: ${{ fmt(c.balance_micro) }}</h3>
+    <form method="post" action="/admin/users/{{ c.id }}/balance">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="amount">Сумма, USD</label>
+      <input id="amount" name="amount" inputmode="decimal" required placeholder="100 — пополнить, -10 — списать">
+      <label for="note">Комментарий (клиент его видит)</label>
+      <input id="note" name="note" placeholder="Пополнение USDT TRC20">
+      <button class="btn primary" style="margin-top:12px">Провести</button>
+    </form>
+  </div>
+</div>
+
+<h2 style="margin-top:28px">Заявки на пополнение</h2>
+<div class="card table-wrap"><table>
+  <tr><th>Заявка</th><th>Способ</th><th class="num">Сумма</th><th>Статус</th><th>Кто решил</th><th>Создана</th><th>Решена</th></tr>
+  {% for p in pays %}
+  <tr><td>#{{ p.id }}{% if p.receipt_file %} · <a href="/admin/payments/{{ p.id }}/receipt" target="_blank" rel="noopener">🧾 чек</a>{% endif %}</td>
+    <td>{{ pay_titles.get(p.method, p.method) }}</td>
+    <td class="num">${{ fmt(p.amount_micro) }}<div class="small muted">{{ p.pay_amount }} {{ p.pay_currency }}</div></td>
+    <td><span class="badge {{ {'paid': 'ok', 'rejected': 'bad', 'pending': 'warn', 'fake': 'bad'}.get(p.status, '') }}">{{ {'pending': 'Ждёт проверки', 'paid': 'Зачислено', 'rejected': 'Отклонено', 'cancelled': 'Отменено', 'fake': '🚨 Поддельный чек'}.get(p.status, p.status) }}</span>
+      {% if p.admin_note %}<div class="small muted">{{ p.admin_note }}</div>{% endif %}</td>
+    <td>{{ p.who or '—' }}</td>
+    <td class="small">{{ p.created_at | dt }}</td><td class="small">{{ p.resolved_at | dt if p.resolved_at else '—' }}</td></tr>
+  {% else %}<tr><td colspan="7" class="muted">Заявок не было.</td></tr>{% endfor %}
+</table></div>
+
+<h2 style="margin-top:28px">Транзакции</h2>
+<div class="card table-wrap"><table>
+  <tr><th>ID</th><th>Комментарий</th><th class="num">Было</th><th class="num">Сумма</th><th class="num">Осталось</th><th>Когда</th></tr>
+  {% for t in txs %}
+  <tr><td>tx{{ t.id }}</td><td>{{ t.note }}</td>
+    <td class="num">${{ fmt(t.balance_before) }}</td>
+    <td class="num amount {{ 'plus' if t.amount_micro > 0 else 'minus' }}">${{ fmt(t.amount_micro) }}</td>
+    <td class="num">${{ fmt(t.balance_after) }}</td><td class="small">{{ t.created_at | dt }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">Нет движений.</td></tr>{% endfor %}
+</table></div>
+
+<h2 style="margin-top:28px">Заказы</h2>
+<div class="card table-wrap"><table>
+  <tr><th>Заказ</th><th>Товар</th><th class="num">Сумма</th><th>Статус</th><th>Создан</th></tr>
+  {% for o in orders %}
+  <tr><td><a href="/admin/orders/{{ o.id }}">{{ o.public_id }}</a></td><td>{{ o.product_name | pack_title(o.kind) }}</td>
+    <td class="num">${{ fmt(o.total_micro) }}</td>
+    <td><span class="badge {{ {'completed': 'ok', 'failed': 'bad', 'processing': 'warn', 'attention': 'bad'}[o.status] }}">{{ status_titles[o.status] }}</span></td>
+    <td class="small">{{ o.created_at | dt }}</td></tr>
+  {% else %}<tr><td colspan="5" class="muted">Заказов нет.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

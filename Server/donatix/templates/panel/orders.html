@@ -1,0 +1,29 @@
+{% extends "panel/_layout.html" %}
+{% block title %}Заказы — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Заказы</h1><p>{{ pr.label }}: {{ total }} · выполнено {{ totals.done }} на {{ money(totals.spent) }}{% if totals.failed %} · возвращено {{ totals.failed }}{% endif %}</p></section>
+<form class="card" method="get">
+  <div class="search-row"><input id="q" name="q" type="search" value="{{ q }}" placeholder="Поиск: номер, товар или ID игрока" aria-label="Поиск">
+    <button class="btn primary">Найти</button></div>
+  <details class="more-filters" {{ 'open' if status or request.query_params.get('period') or request.query_params.get('from') }}>
+  <summary>Фильтры: статус и даты</summary>
+  <div class="filters">
+  <div><label class="label-caps" for="status">Статус</label>
+    <select id="status" name="status">
+      <option value="">Все</option>
+      {% for s in ['processing', 'completed', 'failed'] %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ status_titles[s] }}</option>{% endfor %}
+    </select></div>
+  {% include "_period_filter.html" %}
+  <div style="display:flex;align-items:end"><button class="btn block">Показать</button></div>
+  </div></details></form>
+<div class="list" style="margin-top:16px">
+  {% for o in orders %}{% include "panel/_order_item.html" %}{% else %}<div class="card empty">Заказов нет.</div>{% endfor %}
+</div>
+{% if pages > 1 %}
+<div class="pager">
+  {% if page > 1 %}<a class="btn sm" href="?{{ keep_all }}&page={{ page - 1 }}">←</a>{% endif %}
+  <span class="muted">{{ page }} / {{ pages }}</span>
+  {% if page < pages %}<a class="btn sm" href="?{{ keep_all }}&page={{ page + 1 }}">→</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

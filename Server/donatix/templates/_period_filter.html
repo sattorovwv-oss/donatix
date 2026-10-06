@@ -1,0 +1,12 @@
+{# Фильтр периода: готовые варианты + «с … по …». Нужны: pr (periods.Period), presets, keep (строка запроса без периода). #}
+<div class="full">
+  <div class="chips period-chips">
+    {% for k, t in presets.items() %}<a class="chip {{ 'on' if pr.key == k }}" href="?{{ keep }}&period={{ k }}">{{ t }}</a>{% endfor %}
+    {% if pr.key == 'custom' %}<span class="chip on">{{ pr.label }}</span>{% endif %}
+  </div>
+</div>
+<div class="date-field"><label class="label-caps" for="date_from">С даты</label>
+  <input type="date" id="date_from" name="date_from" value="{{ pr.date_from if pr.key == 'custom' }}"></div>
+<div class="date-field"><label class="label-caps" for="date_to">По дату</label>
+  <input type="date" id="date_to" name="date_to" value="{{ pr.date_to if pr.key == 'custom' }}"></div>
+{% if pr.key != 'custom' %}<input type="hidden" name="period" value="{{ pr.key }}">{% endif %}

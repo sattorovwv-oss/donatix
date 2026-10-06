@@ -1,0 +1,257 @@
+{% from "_icons.html" import icon, logo, theme_button, tg_logo %}<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}{{ site_name }}{% endblock %}</title>
+  <meta name="description" content="{% block description %}{{ site_name }} — оптовые Telegram Stars, Telegram Premium, пополнения игр (Free Fire, PUBG, Mobile Legends) и Steam для магазинов и ботов. API, автоматическая выдача за секунды.{% endblock %}">
+  {% if noindex %}<meta name="robots" content="noindex, nofollow">
+  {% else %}<meta name="robots" content="index, follow, max-image-preview:large">
+  <link rel="canonical" href="{{ canonical }}">
+  {% if google_verify %}<meta name="google-site-verification" content="{{ google_verify }}">{% endif %}
+  {% if yandex_verify %}<meta name="yandex-verification" content="{{ yandex_verify }}">{% endif %}
+  {% endif %}
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ site_name }}">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:title" content="{{ self.title() | trim }}">
+  <meta property="og:description" content="{{ self.description() | trim }}">
+  <meta property="og:url" content="{{ canonical }}">
+  <meta property="og:image" content="{{ base_url }}/static/og.png?v={{ asset_v }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ self.title() | trim }}">
+  <meta name="twitter:description" content="{{ self.description() | trim }}">
+  <meta name="twitter:image" content="{{ base_url }}/static/og.png?v={{ asset_v }}">
+  {% block jsonld %}{% endblock %}
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("dx-theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+      document.documentElement.classList.add("js");
+    })();
+    // Часовой пояс устройства → cookie: сервер показывает время так, как у человека на часах.
+    // Если выбран «автоматически» и пояс поменялся (поездка, другой телефон) — один раз обновляем страницу.
+    (function () {
+      try {
+        var z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (!z) return;
+        var had = document.cookie.match(/(?:^|; )dx_tz=([^;]*)/);
+        if (had && decodeURIComponent(had[1]) === z) return;
+        document.cookie = "dx_tz=" + encodeURIComponent(z) + "; path=/; max-age=31536000; samesite=lax";
+        if ("{{ tz_choice }}" === "auto" && "{{ tz }}" !== z && !sessionStorage.getItem("dx-tz-r")) {
+          sessionStorage.setItem("dx-tz-r", "1");
+          location.reload();
+        }
+      } catch (e) {}
+    })();
+    // Валюта показа: USD или TJS по курсу оплат. Внутри всё в долларах — это только вывод.
+    window.DX_CUR = {code: "{{ cur_code }}", rate: {{ cur_rate or 0 }}};
+    window.dxMoney = function (usd, digits) {
+      var c = window.DX_CUR;
+      if (c.code !== "TJS" || !c.rate) return "$" + usd.toFixed(digits || 4);
+      var t = usd * c.rate, d = (t > 0 && t < 1) ? 4 : 2, k = Math.pow(10, d);
+      return (Math.round(t * k + 1e-9) / k).toFixed(d) + " с.";
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Шрифты не держат показ страницы: пока грузятся (медленный мобильный интернет), текст — системным шрифтом -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/static/donatix.css?v={{ asset_v }}">
+  <link rel="icon" href="/static/logo.svg?v={{ asset_v }}" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/app/icon-192.png?v={{ asset_v }}">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- Быстрые переходы: Chrome начинает грузить страницу в момент касания ссылки, а не после.
+       Не трогаем страницы, которые что-то меняют при открытии (уведомления, новый API-ключ, вход, выход). -->
+  <script type="speculationrules">
+  {"prefetch": [{"where": {"and": [{"href_matches": "/*"},
+      {"not": {"href_matches": ["/logout", "/auth/*", "/api/*", "/currency/*", "/admin*", "/panel/notifications*",
+                                "/panel/api*", "/login*", "/register*"]}}]},
+    "eagerness": "conservative"}]}
+  </script>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="{{ site_name }}">
+  <script>
+    // Сайт открыт как приложение (APK, «на экран домой» или ?source=app) — включаем режим приложения:
+    // нижнее меню, без рекламных блоков; во встроенном WebView прячем вход через Google (Google его там запрещает).
+    (function () {
+      var d = document.documentElement, ua = navigator.userAgent || "", q = /[?&]source=app\b/.test(location.search);
+      var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+      var saved = null; try { if (q) localStorage.setItem("dx-app", "1"); saved = localStorage.getItem("dx-app"); } catch (e) {}
+      if (q || standalone || saved === "1" || /DonatixApp/i.test(ua)) d.classList.add("is-app");
+      if (/; wv\)|DonatixApp/i.test(ua)) d.classList.add("is-webview");
+      // Мобильный вид как в приложении (нижнее меню и т.д.) — в приложении и на сайте с телефона
+      if (d.classList.contains("is-app") || (window.matchMedia && matchMedia("(max-width: 900px)").matches)) d.classList.add("app-ui");
+      // Заставка — при первом открытии (в приложении и на сайте), не на каждой странице; поисковым роботам — нет
+      var seen = null; try { seen = sessionStorage.getItem("dx-splash"); } catch (e) {}
+      if (!seen && !/bot|crawl|spider|lighthouse|headless|preview/i.test(ua)) d.classList.add("splash-on");
+    })();
+  </script>
+</head>
+<body>
+<div class="splash" id="splash" aria-hidden="true">
+  <div class="splash-logo">
+    <span class="splash-ring"></span>
+    <svg viewBox="0 0 32 32" width="96" height="96"><rect width="32" height="32" rx="8" fill="#4338ca"/>
+      <path class="splash-d" d="M10 8.5h6a7.5 7.5 0 0 1 0 15h-6Z" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="splash-name">{{ site_name }}</div>
+  <div class="splash-tag">💎 Алмазы · UC · ⭐ Stars · Steam<br><span>пополнение за секунды</span></div>
+  <div class="splash-bar"><i></i></div>
+</div>
+<div class="nav-progress" id="nav-progress" aria-hidden="true"></div>
+{% block header %}
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="/">{{ logo() }}{{ site_name }}</a>
+    <nav class="nav">
+      <a class="hide-sm" href="/panel/catalog">Каталог</a>
+      <a class="hide-sm" href="/#pricing">Цены</a>
+      <a class="hide-sm" href="/docs">Документация</a>
+      <a class="hide-sm" href="/#faq">FAQ</a>
+      {% if tg_channel %}<a class="nav-tg hide-in-app" href="{{ tg_channel }}" target="_blank" rel="noopener" aria-label="Наш Telegram-канал">{{ tg_logo(22) }}<span class="hide-sm">Канал</span></a>{% endif %}
+      {{ theme_button() }}
+      {% if user %}
+        <a class="btn sm primary" href="{{ '/admin' if user.role == 'admin' else '/panel' }}">Панель</a>
+      {% else %}
+        <a class="btn sm hide-sm" href="/login">Войти</a>
+        <a class="btn sm primary hide-in-app" href="/register">Начать</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+{% endblock %}
+{% block body %}
+<main class="wrap">
+  {% for f in flashes %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+{% endblock %}
+{% block footer %}
+<footer class="foot">
+  <div class="wrap cols">
+    <div style="max-width:380px">
+      <div class="brandline">{{ site_name }}</div>
+    </div>
+    <div class="links">
+      <a href="/#catalog">Каталог</a><a href="/#pricing">Цены</a><a href="/docs">Документация API</a>
+      <a href="/#faq">FAQ</a><a href="/register">Стать партнёром</a><a href="/login">Вход в панель</a>
+      {% if tg_channel %}<a href="{{ tg_channel }}" target="_blank" rel="noopener">Telegram-канал</a>{% endif %}
+      <a href="/privacy">Конфиденциальность</a><a href="/terms">Соглашение</a>
+      {% if support_contact %}<span>Поддержка: {{ support_contact }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="wrap small" style="margin-top:24px">© {{ site_name }}</div>
+</footer>
+{% endblock %}
+{% block fab %}
+{% if tg_channel and not path.startswith('/admin') and not path.startswith('/panel') %}
+<a class="tg-fab" href="{{ tg_channel }}" target="_blank" rel="noopener" aria-label="Наш Telegram-канал: уроки и акции">
+  <span class="tg-fab-ring" aria-hidden="true"></span>{{ tg_logo(56) }}<span class="tg-fab-label">Уроки и акции<small>в нашем канале</small></span>
+</a>
+<script>
+  // Один раз за визит подпись выезжает сама — чтобы кнопку заметили и на телефоне
+  (function () {
+    var fab = document.querySelector(".tg-fab"); if (!fab) return;
+    try { if (sessionStorage.getItem("dx_fab")) return; sessionStorage.setItem("dx_fab", "1"); } catch (e) {}
+    setTimeout(function () { fab.classList.add("open"); setTimeout(function () { fab.classList.remove("open"); }, 4000); }, 2500);
+  })();
+</script>
+{% endif %}
+{% endblock %}
+<script src="/static/code.js?v={{ asset_v }}" defer></script>
+<script>
+  var dxCalm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function dxTheme() {
+    var r = document.documentElement, t = r.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    var apply = function () { r.setAttribute("data-theme", t); };
+    if (document.startViewTransition && !dxCalm) {
+      r.classList.add("theme-fade");
+      document.startViewTransition(apply).finished.finally(function () { r.classList.remove("theme-fade"); });
+    } else apply();
+    try { localStorage.setItem("dx-theme", t); } catch (e) {}
+  }
+
+  // Секции главной проявляются, когда до них докрутили
+  (function () {
+    var els = document.querySelectorAll("[data-reveal]");
+    if (!("IntersectionObserver" in window) || dxCalm) {
+      els.forEach(function (el) { el.classList.add("in"); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    els.forEach(function (el) { io.observe(el); });
+  })();
+
+  // Суммы в карточках-счётчиках плавно набегают от нуля
+  (function () {
+    if (dxCalm || !window.requestAnimationFrame) return;
+    document.querySelectorAll(".stat .value, .balance-card b, .bal-amount, .bal-tile .t-value").forEach(function (el) {
+      el = el.querySelector(".cur-tjs") || el;   // сумма в сомони — внутри своего span (с подсказкой в $)
+      var m = el.textContent.trim().match(/^(\$?)(\d+)(?:\.(\d+))?(\s*с\.)?$/);
+      if (!m) return;
+      var prefix = m[1], suffix = m[4] || "", digits = (m[3] || "").length, target = parseFloat(m[2] + "." + (m[3] || "0"));
+      if (!target) return;
+      var start = performance.now(), dur = 700;
+      (function step(now) {
+        var k = Math.min(1, (now - start) / dur), v = target * (1 - Math.pow(1 - k, 3));
+        el.textContent = prefix + v.toFixed(digits) + suffix;
+        if (k < 1) requestAnimationFrame(step);
+      })(start);
+    });
+  })();
+  // Заставка при входе: 3–5 секунд — не меньше 3 с (анимация и название), прячем, как только страница готова, не позже 5 с
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains("splash-on")) return;
+    var t0 = window.performance && performance.timing ? performance.timing.navigationStart || Date.now() : Date.now();
+    var done = false;
+    function hide() {
+      if (done) return;
+      done = true;
+      setTimeout(function () {
+        d.classList.add("splash-out");
+        try { sessionStorage.setItem("dx-splash", "1"); } catch (e) {}
+        setTimeout(function () { d.classList.remove("splash-on", "splash-out"); }, 450);
+      }, Math.max(0, 3000 - (Date.now() - t0)));
+    }
+    if (document.readyState === "complete") hide(); else window.addEventListener("load", hide);
+    setTimeout(hide, Math.max(3000, 5000 - (Date.now() - t0)));   // медленный интернет: не дольше 5 с
+  })();
+
+  // Переход между страницами: тонкая полоска сверху сразу после нажатия — видно, что приложение работает
+  (function () {
+    var bar = document.getElementById("nav-progress");
+    if (!bar) return;
+    function go() { bar.classList.remove("done"); void bar.offsetWidth; bar.classList.add("go"); }
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[href]");
+      if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || a.target === "_blank" || a.hasAttribute("download")) return;
+      var href = a.getAttribute("href");
+      if (!href || href.charAt(0) === "#" || /^(mailto:|tel:|tg:|javascript:)/i.test(href)) return;
+      if (a.origin && a.origin !== location.origin) return;
+      go();
+    });
+    document.addEventListener("submit", function (e) { if (!e.defaultPrevented && e.target.method !== "dialog") go(); });
+    window.addEventListener("pageshow", function () { bar.classList.remove("go"); bar.classList.add("done"); });
+  })();
+
+  // Офлайн-экран и «Установить приложение» — нужен service worker
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); });
+  }
+</script>
+</body>
+</html>

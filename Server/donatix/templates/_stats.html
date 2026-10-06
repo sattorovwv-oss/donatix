@@ -1,0 +1,45 @@
+{#- Аналитика: общий блок для кабинета клиента и админки. Ожидает a (analytics.build) и base (адрес страницы). -#}
+<div class="periods" role="tablist" aria-label="Период">
+  {% for k, t in a.periods.items() %}<a role="tab" class="{{ 'on' if k == a.period }}" aria-selected="{{ 'true' if k == a.period else 'false' }}" href="{{ base }}?period={{ k }}">{{ t }}</a>{% endfor %}
+</div>
+<p class="muted small tz">Часовой пояс: UTC{{ '%+d' | format(a.tz_hours) }}</p>
+
+<div class="grid scards">
+  <div class="scard"><div class="label">Создано заказов</div><div class="value c-created">{{ '{:,}'.format(a.created).replace(',', ' ') }}</div><div class="note">За период</div></div>
+  <div class="scard"><div class="label">Выполнено</div><div class="value c-done">{{ '{:,}'.format(a.done).replace(',', ' ') }}</div><div class="note">Успешные заказы</div></div>
+  <div class="scard"><div class="label">Возвраты</div><div class="value c-ref">{{ '{:,}'.format(a.refunded).replace(',', ' ') }}</div><div class="note">Деньги вернулись на баланс</div></div>
+  <div class="scard"><div class="label">Сумма выполненных</div><div class="value">{{ money(a.turnover) }}</div><div class="note">{% if show_profit %}Прибыль {{ money(a.profit) }}{% else %}Потрачено на выполненные{% endif %}</div></div>
+  <div class="scard"><div class="label">Пополнено</div><div class="value">{{ money(a.topped) }}</div><div class="note">Зачислено на баланс</div></div>
+</div>
+
+<div class="card chart-card">
+  <div class="card-head"><h3>Динамика заказов</h3><span class="muted small">Создано · выполнено · возвраты</span></div>
+  <div class="legend big"><span><i class="c-created"></i>Создано заказов</span><span><i class="c-done"></i>Выполнено</span><span><i class="c-ref"></i>Возвраты</span></div>
+  {% set c = a.chart %}
+  <div class="chart-wrap">
+  <svg class="line-chart" viewBox="0 0 {{ c.w }} {{ c.h }}" role="img" aria-label="Динамика заказов за период" preserveAspectRatio="none">
+    <defs><linearGradient id="fillCreated" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="var(--c-created)" stop-opacity=".18"/><stop offset="1" stop-color="var(--c-created)" stop-opacity="0"/>
+    </linearGradient></defs>
+    {% for g in c.grid %}<line class="gridline" x1="{{ c.x0 }}" x2="{{ c.x1 }}" y1="{{ g.y }}" y2="{{ g.y }}"/>{% endfor %}
+    {% if c.area %}<path d="{{ c.area }}" fill="url(#fillCreated)"/>{% endif %}
+    <path class="ln c-ref" d="{{ c.lines.refunded }}"/>
+    <path class="ln c-done" d="{{ c.lines.done }}"/>
+    <path class="ln c-created" d="{{ c.lines.created }}"/>
+  </svg>
+  {#- подписи — обычным текстом поверх, чтобы не растягивались вместе с графиком -#}
+  {% for g in c.grid %}<span class="ax y" style="top: {{ (g.y / c.h * 100) | round(2) }}%">{{ g.v }}</span>{% endfor %}
+  {% for t in c.ticks %}<span class="ax x" style="left: calc(var(--axw) + (100% - var(--axw)) * {{ (t.x / c.w) | round(4) }})">{{ t.t }}</span>{% endfor %}
+  </div>
+</div>
+
+<div class="card kinds-card">
+  <div class="card-head"><h3>По типам товаров</h3><span class="muted small">Разбивка по категориям</span></div>
+  <div class="kinds-head"><span>Тип</span><span>Созд.</span><span>Вып.</span><span>Возвр.</span></div>
+  {% for k in a.by_kind %}
+  <div class="kind-row">
+    <div class="kr-top"><b>{{ k.title }}</b><span>{{ k.created }}</span><span class="c-done">{{ k.done or 0 }}</span><span class="c-ref">{{ k.refunded or 0 }}</span></div>
+    <div class="kr-sum"><span class="muted small">Оборот</span><b>{{ money(k.turnover) }}</b></div>
+  </div>
+  {% else %}<div class="empty small">За этот период заказов нет.</div>{% endfor %}
+</div>

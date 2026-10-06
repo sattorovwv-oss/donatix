@@ -1,0 +1,295 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Баланс — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Баланс</h1></section>
+
+<div class="grid two" style="align-items:start">
+  <div class="stack">
+    <div class="stat reveal"><div class="label">Доступно</div><div class="value">{{ money(user.balance_micro) }}</div>
+      <div class="note">Курс для оплаты в сомони: 1 USD = <b id="rate">{{ tjs_rate }}</b> TJS <span class="muted small" id="rate-at">· обновляется каждые 30 с</span></div></div>
+
+    {% if waiting %}
+    <div class="card reveal wait-card" id="wait" data-id="{{ waiting.id }}" role="status" aria-live="polite">
+      <div class="wait-spin" aria-hidden="true"><span class="ring"></span><span class="clock">{{ icon('clock', 22) }}</span></div>
+      <div class="grow">
+        <h3>{% if waiting.auto_kind %}Заявка #{{ waiting.id }} ждёт оплаты{% else %}Заявка #{{ waiting.id }} на проверке{% endif %}</h3>
+        <p class="muted small">{{ money(waiting.amount_micro) }} · {{ waiting.pay_amount }} {{ waiting.pay_currency }} · {{ pay_titles.get(waiting.method, waiting.method) }} · {{ waiting.created_at | dt }}</p>
+        {% if waiting.auto_kind %}
+        <p>Переведите точную сумму — баланс пополнится сам. Новую заявку можно создать после оплаты или отмены этой.</p>
+        <div class="row-actions">
+          <a class="btn primary" href="/panel/balance/{{ waiting.id }}/pay">Открыть оплату</a>
+          <form class="inline" method="post" action="/panel/balance/{{ waiting.id }}/cancel"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn">Отменить</button></form>
+        </div>
+        {% else %}
+        <p>Чек получен ✅ Администратор проверяет поступление — обычно до 1 часа. Как только проверит, баланс пополнится и придёт уведомление 🔔.</p>
+        {% if boost_wait == 0 %}
+        <form method="post" action="/panel/balance/{{ waiting.id }}/boost" class="boost-form">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn primary boost-btn">⚡ Ускорить проверку</button>
+        </form>
+        <p class="hint">Заявка ещё раз придёт администратору — наверх списка.</p>
+        {% else %}
+        <p class="hint" id="boost-soon" data-left="{{ boost_wait }}">Если проверка затянется, через {{ boost_wait // 60 + 1 }} мин. здесь появится кнопка «⚡ Ускорить».</p>
+        {% endif %}
+        <p class="hint">Новую заявку можно отправить сразу после проверки этой. Страница обновится сама.</p>
+        {% endif %}
+      </div>
+    </div>
+    {% else %}
+    <form class="card reveal" method="post" action="/panel/balance" id="payform" enctype="multipart/form-data">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <div class="step-head"><span class="n">1</span><h3>Способ оплаты</h3></div>
+      {% if methods %}
+      <div class="paymethods">
+        {% for m in methods %}
+        <label class="paym {{ 'on' if loop.first }}">
+          <input type="radio" name="method" value="{{ m.code }}" data-cur="{{ m.currency }}" data-auto="{{ '1' if m.auto else '' }}" {{ 'checked' if loop.first }}>
+          {% if m.icon_url %}<img class="pm-logo" src="{{ m.icon_url }}" alt="" width="36" height="36" loading="lazy">
+          {% else %}<span class="tile sm {{ 'g4' if m.currency == 'TJS' else 'g5' }}">{{ icon('wallet' if m.currency == 'TJS' else 'bolt', 18) }}</span>{% endif %}
+          <span><b>{{ m.title }}</b><span class="sub">{{ m.currency }}{% if m.network %} · сеть {{ m.network }}{% endif %}</span></span>
+        </label>
+        {% endfor %}
+      </div>
+
+      <div class="step-head" style="margin-top:22px"><span class="n">2</span><h3>Сумма</h3></div>
+      <div class="amt-cur" role="radiogroup" aria-label="Валюта суммы">
+        <label><input type="radio" name="amount_cur" value="TJS" checked> сомони</label>
+        <label><input type="radio" name="amount_cur" value="USD"> $ доллары</label>
+      </div>
+      <label for="amount" id="amount-label">Сколько пополнить, сомони</label>
+      <input id="amount" name="amount_tjs" inputmode="decimal" required placeholder="Например, 500" autocomplete="off">
+      <div class="flash warn usd-warn" id="usd-warn" hidden role="alert"></div>
+      <div class="hint">{% if min_tjs > 0 %}Минимум {{ min_tjs | string | replace(".00", "") }} сомони (≈ {{ money(min_usd) }}). {% else %}Любая сумма. {% endif %}К переводу: <b id="topay">—</b></div>
+
+      <div class="step-head" style="margin-top:22px"><span class="n">3</span><h3>Переведите по реквизитам</h3></div>
+      {% for m in methods %}
+      <div class="details" data-for="{{ m.code }}" {{ 'hidden' if not loop.first }}>
+        {% if m.network %}<div class="net-badge">Сеть: <b>{{ m.network_title }}</b></div>{% endif %}
+        <pre class="keybox">{{ m.details }}</pre>
+        {% if m.network_note %}<div class="flash error net-warn" role="note">⚠️ {{ m.network_note }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <div id="receipt-box">
+      <label for="receipt">Чек об оплате <b class="req">— обязательно</b> <span class="muted">(скриншот или PDF)</span></label>
+      <label class="file-drop" for="receipt">
+        <input id="receipt" name="receipt" type="file" required accept="image/jpeg,image/png,image/webp,application/pdf">
+        <span class="fd-ico">📷</span><span class="fd-text"><b>Прикрепить чек</b><small>Скриншот из банка или PDF</small></span>
+      </label>
+      <div class="hint" id="receipt-state" role="status"></div>
+      <div class="hint">Без чека заявку не проверить — отправить её не получится.</div>
+      </div>
+      <label for="reference">Номер чека / хэш перевода <span class="muted">(желательно)</span></label>
+      <input id="reference" name="reference" maxlength="200" placeholder="Например, 4821 или TX-хэш" autocomplete="off">
+      <button class="btn primary lg block" style="margin-top:18px" id="paysend">Я оплатил — отправить заявку</button>
+      <div class="rc-check" id="rc-check" hidden role="status" aria-live="polite">
+        <div class="rcc-card">
+          <div class="rcc-icon">🧾</div>
+          <b>Проверяем чек</b>
+          <div class="rcc-step">Подождите…</div>
+          <div class="rcc-bar"><i></i></div>
+          <div class="rcc-pct">0%</div>
+          <small>Не закрывайте страницу</small>
+        </div>
+      </div>
+      <p class="hint center">{{ icon('shield', 16) }} После проверки поступления баланс зачислится, вам придёт уведомление.</p>
+      {% else %}
+      <p class="muted" style="margin-top:12px">Способы оплаты ещё не настроены.{% if support_contact %} Напишите {{ support_contact }}.{% endif %}</p>
+      {% endif %}
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card reveal">
+    <h3>Мои заявки</h3>
+    <div class="list" style="margin-top:12px">
+      {% for p in payments %}
+      <div class="item">
+        <div class="tile sm {{ {'paid': 'ok', 'rejected': 'bad', 'cancelled': 'bad', 'fake': 'bad'}.get(p.status, 'g1') }}">{{ icon({'paid': 'check', 'rejected': 'x', 'cancelled': 'x', 'fake': 'x'}.get(p.status, 'clock'), 18) }}</div>
+        <div class="grow">
+          <div class="head"><span class="title">#{{ p.id }} · {{ pay_titles.get(p.method, p.method) }}</span><span class="amount">{{ money(p.amount_micro) }}</span></div>
+          <div class="sub">{{ p.pay_amount }} {{ p.pay_currency }} · {{ p.created_at | dt }}{% if p.admin_note %} · {{ p.admin_note }}{% endif %}</div>
+          <div class="meta">
+            <span class="badge {{ {'paid': 'ok', 'rejected': 'bad', 'cancelled': '', 'fake': 'bad'}.get(p.status, 'warn') }}">{{ {'pending': 'Проверяется', 'paid': 'Зачислено', 'rejected': 'Отклонено', 'cancelled': 'Отменено', 'fake': 'Перевод не поступил'}.get(p.status, p.status) }}</span>
+            {% if p.status == 'pending' and not p.receipt_file %}
+            <form class="inline" method="post" action="/panel/balance/{{ p.id }}/cancel"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm">Отменить</button></form>
+            {% elif p.status == 'pending' %}<span class="spin-dot" aria-hidden="true"></span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% else %}<div class="empty small">Заявок пока нет.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Заявка на проверке: как только админ решит — страница обновится сама
+  var w = document.getElementById("wait");
+  if (w) {
+    setInterval(function () {
+      if (document.hidden) return;
+      fetch("/panel/data/payment/" + w.dataset.id, {credentials: "same-origin"}).then(function (r) { return r.json(); })
+        .then(function (d) { if (d.status && d.status !== "pending") location.reload(); }).catch(function () {});
+    }, 8000);
+  }
+  // Кнопка «Ускорить» появится сама, когда подойдёт время
+  var soon = document.getElementById("boost-soon");
+  if (soon) setTimeout(function () { location.reload(); }, (parseInt(soon.dataset.left, 10) + 2) * 1000);
+  // Чек сразу копируем в память. На Android (особенно внутри Instagram/Telegram) выбранный файл
+  // к моменту отправки часто уже недоступен — ERR_UPLOAD_FILE_CHANGED. Копия в памяти не пропадёт.
+  var pf = document.getElementById("payform"), ps = document.getElementById("paysend");
+  var rc = document.getElementById("receipt"), rs = document.getElementById("receipt-state");
+  var copy = null, reading = null;
+  if (rc) rc.addEventListener("change", function () {   // имя выбранного файла — прямо на кнопке
+    var drop = rc.closest(".file-drop"), f = rc.files && rc.files[0];
+    if (!drop) return;
+    drop.classList.toggle("has-file", !!f);
+    drop.querySelector(".fd-ico").textContent = f ? "✅" : "📷";
+    drop.querySelector(".fd-text b").textContent = f ? "Чек выбран" : "Прикрепить чек";
+    drop.querySelector(".fd-text small").textContent = f ? f.name + " · нажмите, чтобы заменить" : "Скриншот из банка или PDF";
+  });
+  function state(text, bad) { if (rs) { rs.textContent = text; rs.style.color = bad ? "var(--bad)" : ""; } }
+  function shrink(file) {   // большое фото — уменьшаем, чтобы быстро ушло с мобильного интернета
+    return new Promise(function (resolve) {
+      if (!/^image\/(jpeg|png|webp)$/.test(file.type) || file.size < 2.5e6 || !window.createImageBitmap) {
+        return resolve(file);
+      }
+      createImageBitmap(file).then(function (img) {
+        var k = Math.min(1, 2000 / Math.max(img.width, img.height));
+        var c = document.createElement("canvas");
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        c.toBlob(function (b) {
+          resolve(b && b.size < file.size ? new File([b], file.name.replace(/\.\w+$/, "") + ".jpg",
+                                                     {type: "image/jpeg"}) : file);
+        }, "image/jpeg", 0.85);
+      }).catch(function () { resolve(file); });
+    });
+  }
+  if (rc) rc.addEventListener("change", function () {
+    copy = null;
+    var file = rc.files && rc.files[0];
+    if (!file) { state(""); return; }
+    state("Загружаем чек…");
+    reading = file.arrayBuffer().then(function (buf) {
+      return shrink(new File([buf], file.name || "chek.jpg", {type: file.type || "image/jpeg"}));
+    }).then(function (f) {
+      copy = f;
+      state("✅ Чек загружен: " + f.name + " (" + Math.max(1, Math.round(f.size / 1024)) + " КБ)");
+    }).catch(function () {
+      rc.value = "";
+      state("Не получилось прочитать фото. Выберите чек ещё раз — из Галереи или Файлов.", true);
+    }).then(function () { reading = null; });
+  });
+  // Окно «Проверяем чек»: шкала до 100%
+  function checking() {
+    var box = document.getElementById("rc-check"), bar = box.querySelector(".rcc-bar i"),
+        pct = box.querySelector(".rcc-pct"), step = box.querySelector(".rcc-step"), v = 0, t0 = Date.now(), timer;
+    var stages = [[0, "Подождите…"]];
+    function paint() {
+      bar.style.width = v + "%"; pct.textContent = Math.round(v) + "%";
+      for (var i = stages.length - 1; i >= 0; i--) if (v >= stages[i][0]) { step.textContent = stages[i][1]; break; }
+    }
+    box.hidden = false; document.body.classList.add("rcc-open");
+    timer = setInterval(function () {      // плавно к 95%, дальше ждём ответ сайта
+      var sec = (Date.now() - t0) / 1000;
+      v = Math.min(95, 95 * (1 - Math.exp(-sec / 4)));
+      paint();
+    }, 120);
+    paint();
+    return {
+      done: function (then) {
+        clearInterval(timer); v = 100; paint(); step.textContent = "Готово ✓";
+        box.classList.add("ok"); setTimeout(then, 450);
+      },
+      stop: function () { clearInterval(timer); box.hidden = true; document.body.classList.remove("rcc-open"); }
+    };
+  }
+  if (pf && ps) pf.addEventListener("submit", function (e) {
+    var auto = rc && rc.required === false;
+    if (reading) { e.preventDefault(); state("Секунду — чек ещё загружается…"); return; }
+    if (!copy || auto || !window.fetch || !window.FormData) {
+      // Двойное нажатие не отправит заявку дважды
+      setTimeout(function () { ps.disabled = true; ps.innerHTML = '<span class="spin-dot"></span> Отправляем…'; }, 0);
+      return;
+    }
+    e.preventDefault();
+    var fd = new FormData(pf);
+    fd.set("receipt", copy, copy.name);
+    ps.disabled = true; ps.innerHTML = '<span class="spin-dot"></span> Отправляем…';
+    var check = checking();
+    fetch(pf.action, {method: "POST", body: fd, credentials: "same-origin"}).then(function (r) {
+      return r.text().then(function (html) {
+        // 100% — и показываем ответ сайта как есть
+        check.done(function () {
+          try { history.replaceState(null, "", r.url || "/panel/balance"); } catch (err) {}
+          document.open(); document.write(html); document.close();
+        });
+      });
+    }).catch(function () {
+      check.stop();
+      ps.disabled = false; ps.textContent = "Я оплатил — отправить заявку";
+      state("Нет связи — проверьте интернет и нажмите ещё раз. Чек выбирать заново не нужно.", true);
+    });
+  });
+})();
+(function () {
+  var f = document.getElementById("payform"), inp = document.getElementById("amount");
+  if (!f || !inp) return;
+  var rate = parseFloat("{{ tjs_rate }}"), inTjs = true;
+  var warn = document.getElementById("usd-warn"), label = document.getElementById("amount-label");
+  function setCur(tjs) {
+    inTjs = tjs;
+    inp.name = tjs ? "amount_tjs" : "amount";
+    inp.placeholder = tjs ? "Например, 500" : "Например, 50";
+    label.textContent = tjs ? "Сколько пополнить, сомони" : "Сколько зачислить, долларов ($)";
+    f.querySelectorAll("input[name=amount_cur]").forEach(function (x) { x.checked = (x.value === "TJS") === tjs; });
+  }
+  f.querySelectorAll("input[name=amount_cur]").forEach(function (x) {
+    x.addEventListener("change", function () { setCur(x.value === "TJS"); upd(); });
+  });
+  warn.addEventListener("click", function (e) {
+    if (e.target.closest("[data-to-tjs]")) { setCur(true); upd(); inp.focus(); }
+  });
+  function upd() {
+    var r = f.querySelector("input[name=method]:checked"); if (!r) return;
+    f.querySelectorAll(".paym").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
+    f.querySelectorAll(".details").forEach(function (d) { d.hidden = d.dataset.for !== r.value; });
+    // Автоплатёж (крипта) проверяется сам — там чек не нужен; для переводов — обязателен
+    var box = document.getElementById("receipt-box"), rc = document.getElementById("receipt");
+    if (box && rc) { box.hidden = !!r.dataset.auto; rc.required = !r.dataset.auto; }
+    var a = parseFloat((inp.value || "").replace(",", "."));
+    var out = "—";
+    if (a > 0 && inTjs) {        // ввели сомони: к переводу ровно они; зачислится по курсу
+      var usd = Math.floor(a / rate * 10000) / 10000;
+      out = r.dataset.cur === "TJS" ? a.toFixed(2) + " TJS (зачислится " + dxMoney(usd, 2) + ")"
+                                    : (Math.ceil(usd * 100) / 100).toFixed(2) + " " + r.dataset.cur;
+    } else if (a > 0) {
+      out = r.dataset.cur === "TJS" ? (Math.ceil(a * rate * 100) / 100).toFixed(2) + " TJS" : a.toFixed(2) + " " + r.dataset.cur;
+    }
+    document.getElementById("topay").textContent = out;
+    // Ввёл доллары, а переводит сомони — частая ошибка: «20» хотел сомони, а получилось $20 = 216 сомони
+    var wrong = a > 0 && !inTjs && r.dataset.cur === "TJS";
+    warn.hidden = !wrong;
+    if (wrong) {
+      var tjs = (Math.ceil(a * rate * 100) / 100).toFixed(2);
+      warn.innerHTML = "⚠️ Вы ввели сумму в <b>долларах</b>: $" + a + " = <b>" + tjs + " сомони</b> к переводу. " +
+        "Хотели " + a + " сомони? <button type=\"button\" class=\"btn soft sm\" data-to-tjs>Да, " + a + " сомони</button>";
+    }
+  }
+  f.addEventListener("input", upd); f.addEventListener("change", upd); upd();
+  // Курс меняется — пока клиент на странице, берём свежий каждые 30 секунд
+  setInterval(function () {
+    if (document.hidden) return;
+    fetch("/panel/data/rate", {credentials: "same-origin"}).then(function (r) { return r.json(); }).then(function (d) {
+      var nr = parseFloat(d.tjs_rate); if (!nr) return;
+      rate = nr; document.getElementById("rate").textContent = d.tjs_rate;
+      var t = new Date(); document.getElementById("rate-at").textContent = "· обновлён в " + t.toLocaleTimeString("ru-RU");
+      upd();
+    }).catch(function () {});
+  }, 30000);
+})();
+</script>
+{% endblock %}

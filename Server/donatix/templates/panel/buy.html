@@ -1,0 +1,287 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon, kind_icon, media, pack_icon %}
+{% block title %}{{ p.title }} — {{ site_name }}{% endblock %}
+{% block content %}
+{% if p.kind == 'steam_topup' %}{% include "panel/_buy_steam.html" %}{% elif p.kind == 'steam_gift' %}{% include "panel/_buy_gift.html" %}{% else %}
+{% set multi = p.max_quantity > 1 %}
+{% set cart_ok = siblings | length > 1 and not multi and p.kind == 'topup' %}
+<a class="back" href="/panel/catalog?kind={{ p.kind }}" style="margin-top:14px">{{ icon('arrow-left', 18) }}{{ p.kind_title }}</a>
+<div class="buy-head">
+  {{ media(p.image_url, p.category_name, p.kind, 'cover') }}
+  <div class="grow">
+    <div class="bh-kind">{{ p.kind_title }}</div>
+    <h1>{{ p.category_name if siblings else p.title }}</h1>
+    <div class="bh-tags">
+      {% if p.region %}<span class="badge">{{ p.region_title }}</span>{% endif %}
+      {% if p.platform %}<span class="badge accent">{{ p.platform }}</span>{% endif %}
+      {% if can_check %}<span class="badge ok">{{ icon('shield', 13) }}Проверка ID</span>{% endif %}
+    </div>
+    <div class="api-id muted small">ID для API: <code>{{ p.product_id }}</code>
+      <button class="link-btn" type="button" data-copy="{{ p.product_id }}">Копировать</button>
+      · <a href="/docs#ids">что это?</a></div>
+  </div>
+</div>
+{% if error %}<div class="flash error" role="alert">{{ icon('alert', 20) }}<span>{{ error }}</span></div>{% endif %}
+
+<form method="post" action="/panel/buy/{{ p.product_id }}" class="buy-grid" id="buy">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="idem" value="{{ idem }}">
+  <div class="buy-main">
+  {% set step = namespace(n=0) %}
+  {% if siblings | length > 1 %}
+    {% set step.n = step.n + 1 %}
+    <div class="card">
+      <div class="step-head"><span class="n">{{ step.n }}</span><h3>Выберите пакет</h3></div>
+      <div class="pack-pick" role="list">
+        {% for s in siblings %}
+        <div class="pp-cell" role="listitem">
+        <a class="pp {{ 'on' if s.product_id == p.product_id }}" href="/panel/buy/{{ s.product_id | urlencode }}"
+           {% if s.product_id == p.product_id %}aria-current="true"{% endif %}>
+          {% if s.emoji %}<span class="pp-ico emoji-tile" aria-hidden="true">{{ s.emoji }}</span>
+          {% else %}<span class="pp-ico k-{{ s.kind }}">{{ pack_icon(s.kind, s.name, 18) }}</span>{% endif %}
+          <span class="pp-name">{{ s.title }}</span>
+          {% if s.region and regions_many is not defined %}<span class="pp-reg">{{ s.region_title }}</span>{% endif %}
+          <span class="pp-price">{{ money(s.price_usd | price(s.unit)) }}</span>
+        </a>
+        {% if cart_ok and (s.region or '') == (p.region or '') %}<button type="button" class="pp-add" data-pid="{{ s.product_id }}" data-usd="{{ s.price_usd }}"
+          data-title="{{ (s.emoji ~ ' ' if s.emoji else '') ~ s.title }}" aria-label="Добавить «{{ s.title }}» в корзину">{{ icon('plus', 16) }}</button>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% if cart_ok %}<p class="hint" style="margin-top:10px">Нужно несколько пакетов на один ID{{ ' (' ~ p.region_title ~ ')' if p.region }}? Нажимайте <b>+</b> — соберите корзину и оплатите всё сразу.</p>{% endif %}
+    </div>
+    {% if cart_ok %}
+    <div class="card cart-card" id="cart" hidden>
+      <div class="step-head"><span class="n">🛒</span><h3>Корзина — на один ID</h3></div>
+      <div class="cart-list" id="cart-list"></div>
+      <div id="cart-inputs"></div>
+      <p class="hint">Каждый пакет — отдельный заказ. Они уйдут по очереди, деньги списываются только за оформленные.
+        Не выполнится — вернутся на баланс.</p>
+    </div>
+    {% endif %}
+  {% endif %}
+
+    {% set step.n = step.n + 1 %}
+    <div class="card">
+      <div class="step-head"><span class="n">{{ step.n }}</span><h3>{{ 'Получатель' if p.fields else 'Что вы получите' }}</h3></div>
+    {% for f in p.fields %}
+      <label for="f_{{ f.key }}">{{ f.label }}</label>
+      {% if f.options %}
+      <select id="f_{{ f.key }}" name="field_{{ f.key }}" required>
+        <option value="">— выберите —</option>
+        {% for o in f.options %}<option value="{{ o }}" {{ 'selected' if form.get(f.key) == o }}>{{ o }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <input id="f_{{ f.key }}" name="field_{{ f.key }}" required value="{{ form.get(f.key, '') }}" autocomplete="off"
+             {% if f.key == 'telegram_username' %}placeholder="@username" autocapitalize="off" spellcheck="false"
+             {% else %}placeholder="Например, 5123456789"{% endif %}>
+      {% endif %}
+    {% else %}
+      <p class="muted" style="margin:10px 0 0">После оплаты {{ 'ключ' if p.kind == 'game_key' else 'код' }} появится на странице заказа и придёт на ваш webhook.</p>
+    {% endfor %}
+    {% if p.kind == 'game_key' %}
+      <div class="regions-box" id="gk-regions" data-url="/panel/data/gamekey-regions/{{ p.product_id | urlencode }}">
+        <div class="muted small">Проверяем, где активируется ключ…</div>
+      </div>
+    {% endif %}
+    {% if can_check and p.fields %}
+      <div class="acc-check">
+        <button type="button" class="btn soft" id="acc-btn">{{ icon('shield', 18) }}Проверить аккаунт</button>
+        <div class="acc-result" id="acc-result" role="status" aria-live="polite"></div>
+      </div>
+    {% endif %}
+
+    {% if multi %}
+      <label for="quantity" style="margin-top:20px">{{ 'Количество звёзд' if p.unit == 'star' else 'Количество' }}</label>
+      <div class="qty-row">
+        {% if p.unit != 'star' %}<button type="button" class="icon-btn" data-step="-1" aria-label="Меньше">{{ icon('minus', 18) }}</button>{% endif %}
+        <input id="quantity" name="quantity" type="number" inputmode="numeric" required
+               min="{{ p.min_quantity }}" max="{{ p.max_quantity }}" value="{{ form.get('quantity') or p.min_quantity }}">
+        {% if p.unit != 'star' %}<button type="button" class="icon-btn" data-step="1" aria-label="Больше">{{ icon('plus', 18) }}</button>{% endif %}
+      </div>
+      <div class="hint">От {{ p.min_quantity }} до {{ p.max_quantity }}{% if p.stock is not none %} · в наличии {{ p.stock }}{% endif %}</div>
+      {% if p.unit == 'star' %}
+      <div class="packs">
+        {% for n in [50, 100, 250, 500, 1000, 2500, 5000, 10000] if p.min_quantity <= n <= p.max_quantity %}
+          <button type="button" class="pack" data-qty="{{ n }}"><b>{{ n }} {{ icon('star', 16) }}</b><span class="pack-price"></span></button>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% else %}
+      <input type="hidden" name="quantity" value="1">
+    {% endif %}
+    </div>
+  </div>
+
+  <aside class="buy-side">
+    <div class="card">
+      <h3>Сводка</h3>
+      <div class="summary">
+        <div><span>Товар</span><span class="wrap-text" id="s-item">{{ (p.emoji ~ ' ' if p.emoji else '') ~ p.title }}</span></div>
+        {% if p.fields %}<div><span>Получатель</span><span id="s-to" class="wrap-text">—</span></div>{% endif %}
+        {% if can_check %}<div><span>Игрок</span><span id="s-player" class="wrap-text">—</span></div>{% endif %}
+        {% if multi %}<div><span>Количество</span><span id="s-qty">—</span></div>{% endif %}
+        <div id="s-price"><span>Цена{{ ' за звезду' if p.unit == 'star' else (' за шт.' if multi) }}</span><span>{{ money(p.price_usd | price(p.unit)) }}</span></div>
+        {% if not user.guest %}<div><span>Ваш баланс</span><span>{{ money(user.balance_micro) }}</span></div>{% endif %}
+        <div class="total"><span>К оплате</span><span id="s-total">{{ money(p.price_usd | price) }}</span></div>
+      </div>
+      {% if user.guest %}<a class="btn primary lg block buy-btn" href="/register?next={{ (request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) | urlencode }}">Зарегистрироваться и купить</a>{% else %}<button class="btn primary lg block buy-btn" {{ 'disabled' if user.status != 'active' }}>Купить</button>{% endif %}
+      {% if cart_ok %}<p class="hint center" id="cart-note" hidden>Будет оформлено заказов: <b id="cart-n">0</b></p>{% endif %}
+      {% if delivery_note %}<p class="hint center delivery-note">{{ delivery_note }}</p>{% endif %}
+      <p class="hint center">{{ icon('shield', 16) }} Не выполнится — деньги вернутся на баланс.</p>
+    </div>
+  </aside>
+
+  <div class="buy-bar" aria-hidden="true">
+    <div><span class="muted small">К оплате</span><b id="bar-total">{{ money(p.price_usd | price) }}</b></div>
+    {% if user.guest %}<a class="btn primary lg" href="/register?next={{ (request.url.path ~ ('?' ~ request.url.query if request.url.query else '')) | urlencode }}">Купить</a>{% else %}<button type="submit" class="btn primary lg" tabindex="-1" {{ 'disabled' if user.status != 'active' }}>Купить</button>{% endif %}
+  </div>
+</form>
+
+<script>
+(function () {
+  const unit = parseFloat("{{ p.price_usd }}");
+  const qty = document.getElementById("quantity");
+  const total = document.getElementById("s-total");
+  const sQty = document.getElementById("s-qty");
+  const sTo = document.getElementById("s-to");
+  const form = document.getElementById("buy");
+  const money = n => dxMoney(Math.ceil(unit * n * 10000 - 1e-6) / 10000);
+  const packs = document.querySelectorAll(".pack");
+  packs.forEach(b => { b.querySelector(".pack-price").textContent = money(+b.dataset.qty); });
+  function upd() {
+    const first = form.querySelector("input[name^='field_']");
+    if (sTo) sTo.textContent = first && first.value.trim() ? first.value.trim() : "—";
+    if (!qty) return;
+    const n = parseInt(qty.value || "0", 10) || 0;
+    if (sQty) sQty.textContent = n;
+    total.textContent = money(n);
+    const bar = document.getElementById("bar-total");
+    if (bar) bar.textContent = money(n);
+    packs.forEach(b => b.classList.toggle("on", +b.dataset.qty === n));
+  }
+  form.addEventListener("input", upd);
+  // − / + у количества
+  document.querySelectorAll(".qty-row [data-step]").forEach(b => b.addEventListener("click", () => {
+    const v = (parseInt(qty.value || "0", 10) || 0) + (+b.dataset.step);
+    qty.value = Math.min(+qty.max, Math.max(+qty.min, v)); upd();
+  }));
+  // Смена пакета: введённый ID игрока переносим на страницу другого пакета
+  document.querySelectorAll(".pack-pick a").forEach(a => a.addEventListener("click", e => {
+    const params = new URLSearchParams();
+    form.querySelectorAll("input[name^='field_']").forEach(i => { if (i.value.trim()) params.set(i.name, i.value.trim()); });
+    if ([...params].length) { e.preventDefault(); location.href = a.getAttribute("href") + "?" + params; }
+  }));
+  packs.forEach(b => b.addEventListener("click", () => { qty.value = b.dataset.qty; upd(); }));
+  // Ключи игр: страны, где ключ активируется
+  const gk = document.getElementById("gk-regions");
+  if (gk) {
+    fetch(gk.dataset.url).then(r => r.json()).then(d => {
+      const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+      if (!d.ok || !d.known) { gk.innerHTML = '<div class="muted small">Список стран сейчас недоступен — уточните у поддержки.</div>'; return; }
+      const chips = list => list.map(c => '<span class="chip">' + esc(c.name || c.code) + '</span>').join("");
+      let html = "";
+      if (d.available.length) html += '<div class="label-caps">Активируется в странах</div><div class="chips">' + chips(d.available.slice(0, 40)) +
+        (d.available.length > 40 ? '<span class="chip">ещё ' + (d.available.length - 40) + '</span>' : "") + "</div>";
+      if (d.unavailable.length) html += '<div class="label-caps" style="margin-top:10px">Не работает в</div><div class="chips off">' + chips(d.unavailable.slice(0, 20)) + "</div>";
+      gk.innerHTML = html || '<div class="muted small">Ограничений по странам нет.</div>';
+    }).catch(() => { gk.innerHTML = ""; });
+  }
+  // Проверка аккаунта у поставщика: показываем ник до оплаты
+  const accBtn = document.getElementById("acc-btn");
+  if (accBtn) {
+    const box = document.getElementById("acc-result"), sPlayer = document.getElementById("s-player");
+    let last = "", timer = null;
+    const inputs = () => [...form.querySelectorAll("input[name^='field_']")];
+    async function check() {
+      const params = new URLSearchParams(inputs().map(i => [i.name, i.value.trim()]));
+      if (inputs().some(i => !i.value.trim())) { box.className = "acc-result bad"; box.textContent = "Заполните все поля."; return; }
+      if (params.toString() === last) return;
+      last = params.toString();
+      box.className = "acc-result wait"; box.textContent = "Проверяем…"; accBtn.disabled = true;
+      try {
+        const r = await fetch("/panel/data/check-account/{{ p.product_id | urlencode }}?" + params);
+        const d = await r.json();
+        if (!d.ok) { box.className = "acc-result bad"; box.textContent = d.error; last = ""; }
+        else if (d.valid) {
+          box.className = "acc-result ok"; box.textContent = "Найден: " + (d.player_name || "аккаунт существует");
+          if (sPlayer) sPlayer.textContent = d.player_name || "найден";
+        } else if (d.valid === false) {
+          box.className = "acc-result bad"; box.textContent = "Аккаунт не найден. Проверьте ID.";
+          if (sPlayer) sPlayer.textContent = "не найден";
+        } else { box.className = "acc-result wait"; box.textContent = d.message || "Проверка недоступна, заказ всё равно можно оформить."; last = ""; }
+      } catch (e) { box.className = "acc-result bad"; box.textContent = "Нет связи. Попробуйте ещё раз."; last = ""; }
+      accBtn.disabled = false;
+    }
+    accBtn.addEventListener("click", check);
+    inputs().forEach(i => {
+      i.addEventListener("change", check);
+      i.addEventListener("input", () => {
+        box.textContent = ""; box.className = "acc-result"; if (sPlayer) sPlayer.textContent = "—"; last = "";
+        // Ник ищем сам, как только человек перестал печатать ID (без нажатия кнопки)
+        clearTimeout(timer);
+        if (inputs().every(x => x.value.trim().length >= 4)) timer = setTimeout(check, 900);
+      });
+    });
+  }
+  // Корзина: несколько пакетов этой игры на один ID
+  const cartBox = document.getElementById("cart");
+  if (cartBox) {
+    const KEY = "dx-cart-{{ p.category_id }}", MAX = 20;
+    const esc = t => String(t).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+    const tiles = {};
+    document.querySelectorAll(".pp-add").forEach(b => { tiles[b.dataset.pid] = b; });
+    let cart = [];
+    try { cart = JSON.parse(sessionStorage.getItem(KEY) || "[]").filter(x => tiles[x.pid] && x.n > 0); } catch (e) { cart = []; }
+    const priceOf = pid => Math.ceil(parseFloat(tiles[pid].dataset.usd) * 10000 - 1e-6) / 10000;
+    const count = () => cart.reduce((a, x) => a + x.n, 0);
+    const buyBtns = form.querySelectorAll("button.primary");
+    const single = { action: form.getAttribute("action"), item: document.getElementById("s-item").innerHTML,
+                     total: total.textContent, text: buyBtns.length ? buyBtns[0].textContent : "Купить" };
+    function save() { try { sessionStorage.setItem(KEY, JSON.stringify(cart)); } catch (e) {} }
+    function draw() {
+      const n = count();
+      cartBox.hidden = !n;
+      document.getElementById("cart-note").hidden = !n;
+      document.getElementById("cart-n").textContent = n;
+      document.getElementById("cart-list").innerHTML = cart.map(x =>
+        '<div class="cart-row"><span class="grow">' + esc(tiles[x.pid].dataset.title) + '</span>' +
+        '<button type="button" class="icon-btn" data-dec="' + esc(x.pid) + '" aria-label="Меньше">−</button>' +
+        '<b class="cart-n">' + x.n + '</b>' +
+        '<button type="button" class="icon-btn" data-inc="' + esc(x.pid) + '" aria-label="Больше">+</button>' +
+        '<span class="cart-sum">' + dxMoney(priceOf(x.pid) * x.n) + '</span></div>').join("");
+      document.getElementById("cart-inputs").innerHTML = cart.map(x =>
+        '<input type="hidden" name="item_' + esc(x.pid) + '" value="' + x.n + '">').join("");
+      Object.entries(tiles).forEach(([pid, b]) => {
+        const it = cart.find(x => x.pid === pid);
+        b.classList.toggle("on", !!it); b.dataset.n = it ? it.n : "";
+      });
+      const sum = cart.reduce((a, x) => a + priceOf(x.pid) * x.n, 0);
+      form.setAttribute("action", n ? "/panel/buy-many/{{ p.product_id | urlencode }}" : single.action);
+      document.getElementById("s-item").innerHTML = n ? "Пакетов: " + n : single.item;
+      document.getElementById("s-price").hidden = !!n;
+      total.textContent = n ? dxMoney(sum) : single.total;
+      const bar = document.getElementById("bar-total"); if (bar) bar.textContent = total.textContent;
+      buyBtns.forEach(b => { b.textContent = n ? "Купить всё (" + n + ")" : single.text; });
+      save();
+    }
+    function add(pid, d) {
+      const it = cart.find(x => x.pid === pid);
+      if (d > 0 && count() >= MAX) { alert("За один раз — не больше " + MAX + " пакетов."); return; }
+      if (it) it.n += d; else if (d > 0) cart.push({ pid, n: 1 });
+      cart = cart.filter(x => x.n > 0); draw();
+    }
+    Object.values(tiles).forEach(b => b.addEventListener("click", () => add(b.dataset.pid, 1)));
+    cartBox.addEventListener("click", e => {
+      const t = e.target.closest("[data-inc],[data-dec]"); if (!t) return;
+      add(t.dataset.inc || t.dataset.dec, t.dataset.inc ? 1 : -1);
+    });
+    form.addEventListener("submit", () => { if (count()) { cart = []; save(); } });
+    draw();
+  }
+  form.addEventListener("submit", () => { form.querySelectorAll("button.primary").forEach(b => { b.disabled = true; b.textContent = "Отправляем…"; }); });
+  upd();
+})();
+</script>
+{% endif %}
+{% endblock %}

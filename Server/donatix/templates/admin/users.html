@@ -1,0 +1,27 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Клиенты — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Клиенты</h1></section>
+<form class="card" method="get"><div class="filters">
+  <div class="full"><input type="search" aria-label="Поиск" id="q" name="q" value="{{ q }}" placeholder="email или логин"></div>
+  <div><label class="label-caps" for="status">Статус</label>
+    <select id="status" name="status"><option value="">Все</option>
+      {% for s in ['pending', 'active', 'blocked'] %}<option value="{{ s }}" {{ 'selected' if s == status }}>{{ status_titles[s] }}</option>{% endfor %}
+    </select></div>
+  <div style="display:flex;align-items:end"><button class="btn block">Показать</button></div>
+</div></form>
+<div class="card table-wrap" style="margin-top:16px"><table>
+  <tr><th>Логин</th><th>Email</th><th>Проект</th><th>Уровень</th><th class="num">Баланс</th><th class="num">Заказов</th><th>Статус</th></tr>
+  {% for u in rows %}
+  <tr>
+    <td><a class="who" href="/admin/users/{{ u.id }}"><span class="avatar sm">{{ u.login[:2] | upper }}</span>{{ u.login }}</a>{% if u.role == 'admin' %} <span class="badge accent">админ</span>{% endif %}</td>
+    <td>{{ u.email }}</td>
+    <td class="small">{{ u.project or '' }}</td>
+    <td>{{ u.tier }}{% if u.markup_override %} <span class="small muted">({{ u.markup_override }}%)</span>{% endif %}</td>
+    <td class="num">${{ fmt(u.balance_micro) }}</td>
+    <td class="num">{{ u.n_orders }}</td>
+    <td><span class="badge {{ {'active': 'ok', 'pending': 'warn', 'blocked': 'bad'}[u.status] }}">{{ status_titles[u.status] }}</span></td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">Никого нет.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

@@ -1,0 +1,137 @@
+{% from "_icons.html" import icon %}
+<section class="page-hero">
+  <h1>Steam Гифты (игры)</h1>
+</section>
+{% if error %}<div class="flash error" role="alert">{{ icon('alert', 20) }}<span>{{ error }}</span></div>{% endif %}
+
+<form method="post" action="/panel/buy/{{ p.product_id }}" id="gift" class="gift-grid">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="idem" value="{{ idem }}">
+  <input type="hidden" name="quantity" value="1">
+  <input type="hidden" name="field_app_id" id="h-app" value="{{ form.get('app_id', '') }}">
+  <input type="hidden" name="field_sub_id" id="h-sub" value="{{ form.get('sub_id', '') }}">
+  <input type="hidden" name="field_region" id="h-region" value="{{ form.get('region', '') }}">
+
+  <div class="stack">
+    <div class="card reveal">
+      <label for="g-q" style="margin-top:0">Поиск игры по названию или ID</label>
+      <input id="g-q" type="search" placeholder="Введите название или AppID…" autocomplete="off">
+    </div>
+
+    <div class="card reveal">
+      <div class="step-head"><span class="n">1</span><h3 class="grow-title">Игры</h3></div>
+      <div class="pick-list" id="g-games" aria-live="polite"><div class="empty">Загрузка…</div></div>
+    </div>
+
+    <div class="card reveal">
+      <div class="step-head"><span class="n">2</span><h3 class="grow-title">Издание</h3></div>
+      <div class="pick-list" id="g-editions"><div class="empty small">Выберите игру, чтобы увидеть издания</div></div>
+    </div>
+
+    <div class="card reveal">
+      <div class="step-head"><span class="n">3</span><h3 class="grow-title">Регион и цена</h3></div>
+      <label for="g-rq" class="label-caps" style="margin-top:14px">Поиск региона</label>
+      <input id="g-rq" type="search" placeholder="Страна или код ISO (KZ, UZ)…" autocomplete="off">
+      <div class="pick-list" id="g-regions" style="margin-top:12px"><div class="empty small">Выберите издание, чтобы увидеть регионы</div></div>
+    </div>
+  </div>
+
+  <div class="card sticky-summary">
+    <h3>Сводка</h3>
+    <label for="f_invite_url" class="label-caps">Steam Invite ссылка</label>
+    <input id="f_invite_url" name="field_invite_url" required inputmode="url" autocapitalize="off" spellcheck="false"
+           placeholder="Вставьте короткую ссылку s.team/p/…" value="{{ form.get('invite_url', '') }}">
+    <div class="hint">Ссылка-приглашение в друзья из Steam: Друзья → Добавить друга → «Ссылка для приглашения».</div>
+    <div class="summary" style="margin-top:16px">
+      <div><span>App ID</span><span id="s-app">—</span></div>
+      <div><span>ID пакета</span><span id="s-sub">—</span></div>
+      <div><span>Издание</span><span id="s-ed" class="wrap-text">—</span></div>
+      <div><span>Регион</span><span id="s-reg">—</span></div>
+      <div class="total"><span>Цена</span><span id="s-price">$0.0000</span></div>
+      <div><span>Ссылка invite</span><span id="s-inv" class="wrap-text">—</span></div>
+    </div>
+    {% if user.guest %}<a class="btn primary lg block" style="margin-top:18px" href="/register?next={{ request.url.path | urlencode }}">Зарегистрироваться и купить</a>{% else %}<button class="btn primary lg block" id="g-go" style="margin-top:18px" disabled>Продолжить</button>{% endif %}
+    <p class="hint center">{{ icon('shield', 16) }} Если гифт не отправится, деньги вернутся на баланс.</p>
+  </div>
+</form>
+
+<script>
+(function () {
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+  const st = { game: null, offers: [], edition: null, region: null, price: null };
+  const canBuy = {{ 'true' if user.status == 'active' else 'false' }};
+  let timer;
+
+  function row(html, on, attrs) { return `<button type="button" class="pick ${on ? "on" : ""}" ${attrs}>${html}</button>`; }
+
+  async function loadGames(q) {
+    const r = await fetch("/panel/data/steam-gifts/games?q=" + encodeURIComponent(q || ""));
+    const d = await r.json();
+    const box = $("g-games");
+    if (!d.items.length) { box.innerHTML = '<div class="empty small">Ничего не найдено</div>'; return; }
+    box.innerHTML = d.items.map(g => row(
+      `<img class="cover" src="${g.cover}" alt="" loading="lazy" onerror="this.remove()"><span class="grow"><b>${esc(g.name)}</b><span class="sub">AppID · ${g.appid}</span></span>`,
+      st.game && st.game.appid === g.appid, `data-app="${g.appid}" data-name="${esc(g.name)}"`)).join("");
+  }
+
+  async function pickGame(appid, name) {
+    st.game = { appid, name }; st.edition = st.region = st.price = null;
+    $("g-editions").innerHTML = '<div class="empty small">Загрузка изданий…</div>';
+    $("g-regions").innerHTML = '<div class="empty small">Выберите издание, чтобы увидеть регионы</div>';
+    loadGames($("g-q").value); upd();
+    const r = await fetch("/panel/data/steam-gifts/games/" + appid);
+    const d = await r.json();
+    st.offers = d.ok ? d.offers : [];
+    if (!st.offers.length) { $("g-editions").innerHTML = `<div class="empty small">${esc(d.error || "Нет доступных изданий")}</div>`; return; }
+    renderEditions();
+  }
+
+  function renderEditions() {
+    $("g-editions").innerHTML = st.offers.map(o => row(
+      `<span class="grow"><b>${esc(o.name)}</b><span class="sub">ID пакета · ${o.sub_id} · регионов: ${o.regions.length}</span></span>`,
+      st.edition && st.edition.sub_id === o.sub_id, `data-sub="${o.sub_id}"`)).join("");
+  }
+
+  function renderRegions() {
+    if (!st.edition) return;
+    const q = $("g-rq").value.trim().toLowerCase();
+    const list = st.edition.regions.filter(r => !q || r.region.toLowerCase().includes(q));
+    $("g-regions").innerHTML = list.length ? list.map(r => row(
+      `<span class="grow"><b>${esc(r.region)}</b></span><span class="amount">$${r.price_usd}</span>`,
+      st.region === r.region, `data-region="${esc(r.region)}" data-price="${r.price_usd}"`)).join("")
+      : '<div class="empty small">Регион не найден</div>';
+  }
+
+  function upd() {
+    const inv = $("f_invite_url").value.trim();
+    $("s-app").textContent = st.game ? st.game.appid : "—";
+    $("s-sub").textContent = st.edition ? st.edition.sub_id : "—";
+    $("s-ed").textContent = st.edition ? st.edition.name : "—";
+    $("s-reg").textContent = st.region || "—";
+    $("s-price").textContent = dxMoney(parseFloat(st.price || "0"));
+    $("s-inv").textContent = inv ? inv.replace(/^https?:\/\//, "") : "—";
+    $("h-app").value = st.game ? st.game.appid : "";
+    $("h-sub").value = st.edition ? st.edition.sub_id : "";
+    $("h-region").value = st.region || "";
+    if ($("g-go")) $("g-go").disabled = !(canBuy && st.price && /^https:\/\/s\.team\/p\//.test(inv));
+  }
+
+  $("g-games").addEventListener("click", e => { const b = e.target.closest("[data-app]"); if (b) pickGame(+b.dataset.app, b.dataset.name); });
+  $("g-editions").addEventListener("click", e => {
+    const b = e.target.closest("[data-sub]"); if (!b) return;
+    st.edition = st.offers.find(o => o.sub_id === +b.dataset.sub); st.region = st.price = null;
+    renderEditions(); renderRegions(); upd();
+  });
+  $("g-regions").addEventListener("click", e => {
+    const b = e.target.closest("[data-region]"); if (!b) return;
+    st.region = b.dataset.region; st.price = b.dataset.price; renderRegions(); upd();
+  });
+  $("g-q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => loadGames($("g-q").value), 250); });
+  $("g-rq").addEventListener("input", renderRegions);
+  $("f_invite_url").addEventListener("input", upd);
+  $("gift").addEventListener("submit", () => { if (!$("g-go")) return; $("g-go").disabled = true; $("g-go").textContent = "Отправляем…"; });
+  loadGames("");
+  upd();
+})();
+</script>

@@ -1,0 +1,77 @@
+{% from "_icons.html" import icon, flag %}
+{% set cur = form.get('currency') or 'RUB' %}
+<section class="page-hero">
+  <h1>Пополнить Steam</h1>
+</section>
+{% if error %}<div class="flash error" role="alert">{{ icon('alert', 20) }}<span>{{ error }}</span></div>{% endif %}
+
+<form method="post" action="/panel/buy/{{ p.product_id }}" class="grid two" id="buy" style="align-items:start">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="idem" value="{{ idem }}">
+  <input type="hidden" name="quantity" value="1">
+  <div class="card reveal">
+    <div class="auth-head steam-head">
+      <div class="tile steam-tile">{{ icon('wallet', 26) }}</div>
+      <div style="flex:1;min-width:150px"><h3 style="margin:0">Данные пополнения</h3></div>
+      <button type="button" class="btn sm dashed" onclick="document.getElementById('rates').toggleAttribute('hidden')">{{ icon('alert', 16) }}Курсы</button>
+    </div>
+    <div id="rates" class="summary" hidden style="margin-top:14px">
+      {% for c, r in p.rates.items() if c != 'USD' %}<div><span>1 USD</span><span>{{ r }} {{ c }}</span></div>{% endfor %}
+    </div>
+
+    <label class="label-caps" for="f_steam_login" style="margin-top:20px">Логин Steam</label>
+    <input id="f_steam_login" name="field_steam_login" required placeholder="Логин Steam" autocapitalize="off"
+           autocomplete="off" spellcheck="false" value="{{ form.get('steam_login', '') }}">
+    <div class="hint">Введите логин аккаунта Steam (не никнейм) для пополнения.</div>
+
+    <label class="label-caps" for="f_amount" style="margin-top:20px">Сумма</label>
+    <input id="f_amount" name="field_amount" required inputmode="decimal" placeholder="Введите сумму" value="{{ form.get('amount', '') }}">
+    <div class="hint" id="limits"></div>
+
+    <div class="label-caps" style="margin-top:20px">Валюта</div>
+    <div class="currencies" role="radiogroup" aria-label="Валюта">
+      {% for c in ['USD', 'RUB', 'KZT', 'UAH'] if c in p.rates %}
+      <label class="cur {{ 'on' if c == cur }}"><input type="radio" name="field_currency" value="{{ c }}" {{ 'checked' if c == cur }}>{{ flag(c) }}<b>{{ c }}</b></label>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card reveal">
+    <h3 style="margin-bottom:4px">Сводка</h3>
+    <div class="summary">
+      <div><span>Скидка</span><span class="ok-text">{{ p.discount_percent | float | round(2) }}%</span></div>
+      <div><span>Получит на аккаунт</span><span id="s-get">—</span></div>
+      <div><span>Получит в USD</span><span id="s-usd">—</span></div>
+      <div class="total"><span>К оплате</span><span id="s-total">—</span></div>
+    </div>
+    {% if user.guest %}<a class="btn primary lg block" style="margin-top:18px" href="/register?next={{ request.url.path | urlencode }}">Зарегистрироваться и купить</a>{% else %}<button class="btn primary lg block" style="margin-top:18px" {{ 'disabled' if user.status != 'active' }}>Продолжить</button>{% endif %}
+    <p class="hint center">{{ icon('shield', 16) }} Логин проверяется до оплаты. Если пополнение не пройдёт, деньги вернутся на баланс.</p>
+  </div>
+</form>
+
+<script>
+(function () {
+  const rates = {{ p.rates | tojson }};
+  const perUsd = parseFloat("{{ p.price_usd }}");
+  const minUsd = parseFloat("{{ p.min_usd or 0.5 }}"), maxUsd = parseFloat("{{ p.max_usd or 1000 }}");
+  const form = document.getElementById("buy");
+  const amount = document.getElementById("f_amount");
+  const $ = id => document.getElementById(id);
+  function cur() { return form.querySelector("input[name=field_currency]:checked").value; }
+  function upd() {
+    const c = cur(), rate = parseFloat(rates[c]);
+    form.querySelectorAll(".cur").forEach(l => l.classList.toggle("on", l.querySelector("input").checked));
+    $("limits").textContent = "Минимум: " + (minUsd * rate).toFixed(2) + " " + c + " • Максимум: " + (maxUsd * rate).toFixed(2) + " " + c;
+    const a = parseFloat((amount.value || "").replace(",", "."));
+    if (!a || a <= 0) { $("s-get").textContent = $("s-usd").textContent = $("s-total").textContent = "—"; return; }
+    const usd = a / rate;
+    $("s-get").textContent = a.toFixed(2) + " " + c;
+    $("s-usd").textContent = "$" + usd.toFixed(2);
+    $("s-total").textContent = dxMoney(Math.ceil(usd * perUsd * 10000 - 1e-6) / 10000);
+  }
+  form.addEventListener("input", upd);
+  form.addEventListener("change", upd);
+  form.addEventListener("submit", () => { const b = form.querySelector("button.primary"); b.disabled = true; b.textContent = "Отправляем…"; });
+  upd();
+})();
+</script>

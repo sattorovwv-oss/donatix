@@ -1,0 +1,69 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon, kind_icon, pack_icon, media %}
+{% block title %}{{ game.category_name if game else kind_titles.get(kind, 'Каталог') }} — {{ site_name }}{% endblock %}
+{% block content %}
+{% if game %}
+<section class="page-hero">
+  <a class="back" href="/panel/catalog?kind={{ game.kind }}">{{ icon('arrow-left', 18) }}{{ kind_titles[game.kind] }}</a>
+</section>
+<div class="game-head">
+  {{ media(game.image_url, game.category_name, game.kind, 'cover') }}
+  <div>
+    <h1>{{ game.category_name }}</h1>
+    <p class="muted">{{ count }} {{ 'пакетов' if count != 1 else 'пакет' }}</p>
+  </div>
+</div>
+{% if regions|length > 1 %}
+<div class="chips regions" role="group" aria-label="Регион">
+  <a class="chip {{ 'on' if not region }}" href="?kind={{ kind }}&category={{ category }}">Все регионы</a>
+  {% for r in regions %}<a class="chip {{ 'on' if r == region }}" href="?kind={{ kind }}&category={{ category }}&region={{ r }}">{{ region_title(r) }}</a>{% endfor %}
+</div>
+{% endif %}
+{% else %}
+<section class="page-hero">
+  {% if kind in ('telegram_stars', 'telegram_premium') %}<a class="back" href="/panel/catalog?kind=telegram">{{ icon('arrow-left', 18) }}Telegram</a>{% endif %}
+  <h1>{{ kind_titles.get(kind, 'Каталог') }}</h1>
+</section>
+<form class="search" method="get" action="/panel/catalog" role="search">
+  {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+  {{ icon('grid', 18) }}
+  <input name="q" value="{{ q }}" placeholder="{{ 'Найти игру или сервис' if games is defined else 'Поиск' }}" type="search" aria-label="Поиск">
+</form>
+{% endif %}
+
+{% if games is defined %}
+<div class="grid games">
+  {% for g in games %}
+  <a class="game-card" href="/panel/catalog?kind={{ g.kind }}&category={{ g.category_id | urlencode }}">
+    {{ media(g.image_url, g.category_name, g.kind) }}
+    <div class="game-name">{{ g.category_name }}</div>
+    <div class="game-meta">
+      <span>от {{ money(g.from_price) }}</span>
+      {% if g.regions|length > 1 %}<span>Регионов: {{ g.regions|length }}</span>
+      {% elif g.regions %}<span>{{ region_title(g.regions[0]) }}</span>{% endif %}
+    </div>
+  </a>
+  {% else %}
+  <div class="card empty">Ничего не найдено.</div>
+  {% endfor %}
+</div>
+{% else %}
+{% for group, items in groups.items() %}
+  {% if not game %}<div class="section-title"><h2>{{ group }}</h2></div>
+  {% elif game.kind == 'topup' and groups | length > 1 %}<div class="section-title pack-group-title"><h2>{{ group }}</h2><span class="muted small">{{ items | length }}</span></div>{% endif %}
+  <div class="grid packs-grid">
+    {% for p in items %}
+    <a class="pack-card" href="/panel/buy/{{ p.product_id }}">
+      {% if p.emoji %}<span class="tile emoji-tile" aria-hidden="true">{{ p.emoji }}</span>
+      {% else %}<span class="tile k-{{ p.kind }}">{{ pack_icon(p.kind, p.name, 20) }}</span>{% endif %}
+      <span class="pack-name">{{ p.title }}</span>
+      {% if p.region %}<span class="badge">{{ p.region_title }}</span>{% endif %}
+      <span class="pack-price">{{ money(p.price_usd) }}{% if p.unit == 'star' %}<small> / звезда</small>{% endif %}</span>
+    </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="card empty" style="margin-top:16px">Ничего не найдено.</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,103 @@
+{% extends "admin/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Настройки — админка{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Настройки</h1><p>Всё, что раньше было только в .env, — здесь. Те же настройки меняются и в админ-боте.</p></section>
+<form method="post" action="/admin/settings" class="pay-form">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+
+  <div class="card">
+    <h3>Наценка, %</h3>
+    <div class="grid three" style="gap:12px">
+      {% for t, title in tier_titles.items() %}
+      <div><label for="markup_{{ t }}">{{ title }}</label>
+        <input id="markup_{{ t }}" name="markup_{{ t }}" inputmode="decimal" required value="{{ s.markups[t] }}"></div>
+      {% endfor %}
+    </div>
+    <div class="grid two" style="gap:12px;margin-top:4px">
+      {% for k, title in kind_titles.items() %}
+      <div><label for="markup_{{ k }}">{{ title }} <span class="muted">— отдельная наценка</span></label>
+        <input id="markup_{{ k }}" name="markup_{{ k }}" inputmode="decimal" value="{{ s.kind_markups[k] if s.kind_markups[k] is not none else '' }}" placeholder="пусто — как по уровню"></div>
+      {% endfor %}
+    </div>
+    <div class="hint">Отдельная наценка (Stars, Premium, Steam) действует на весь проект — для всех клиентов, даже с личной наценкой. Пусто — считается по личной наценке клиента или по уровню.</div>
+    <div class="markup-example">Сейчас: товар за <b>$10.00</b> у поставщика → клиент Bronze платит <b>${{ s.example_price }}</b>.
+      Новая наценка действует сразу после «Сохранить» — на сайте, в API и в ботах (в ботах — до 10 минут).</div>
+    <label class="switch" style="margin-top:10px"><input type="checkbox" name="same_for_all" value="1"><span>Одна наценка для всех уровней — как у Bronze</span></label>
+    {% if s.personal %}
+    <div class="flash warn" style="margin-top:10px">{{ icon('alert', 20) }}<span>У {{ s.personal | length }} клиент(ов) личная наценка — для них наценка уровня <b>не действует</b>:
+      {% for p in s.personal[:8] %}{{ p.login }} ({{ p.markup }}%){{ ', ' if not loop.last }}{% endfor %}{% if s.personal | length > 8 %} и ещё {{ s.personal | length - 8 }}{% endif %}.</span></div>
+    <label class="switch"><input type="checkbox" name="reset_personal" value="1"><span>Убрать личные наценки — всем клиентам наценка по уровню</span></label>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Клиенты</h3>
+    <label class="switch"><input type="checkbox" name="reg_open" value="1" {{ 'checked' if s.reg_open }}><span>Регистрация открыта</span></label>
+    <label class="switch"><input type="checkbox" name="require_approval" value="1" {{ 'checked' if s.require_approval }}><span>Проверять новых клиентов вручную</span></label>
+    <label for="support" style="margin-top:12px">Контакт поддержки <span class="muted">— виден клиентам</span></label>
+    <input id="support" name="support" maxlength="100" value="{{ s.support }}" placeholder="@donatix_support">
+    <label for="tg_channel" style="margin-top:12px">Официальный Telegram-канал <span class="muted">— баннер на главной и кнопка на сайте; пусто — скрыть</span></label>
+    <input id="tg_channel" name="tg_channel" maxlength="140" value="{{ s.tg_channel }}" placeholder="https://t.me/…">
+  </div>
+
+  <div class="card">
+    <h3>Конструктор ботов для клиентов</h3>
+    <label class="switch"><input type="checkbox" name="client_bots" value="1" {{ 'checked' if s.client_bots }}><span>Клиенты могут подключать своих ботов</span></label>
+    <div class="grid two" style="gap:12px;margin-top:12px">
+      <div><label for="referral_percent">Реферальный бонус, % от нашей прибыли <span class="muted">— 0 выключено</span></label>
+        <input id="referral_percent" name="referral_percent" inputmode="numeric" value="{{ s.referral_percent }}">
+        <div class="hint">{{ s.referral_example }}</div></div>
+      <div><label for="max_bots">Ботов на одного клиента</label>
+        <input id="max_bots" name="max_bots" inputmode="numeric" value="{{ s.max_bots }}"></div>
+      <div><label for="max_bots_total">Всего ботов на сервере <span class="muted">— 0 без предела</span></label>
+        <input id="max_bots_total" name="max_bots_total" inputmode="numeric" value="{{ s.max_bots_total }}"></div>
+      <div><label for="min_orders">Выполненных заказов до своего бота <span class="muted">— 0 без условия</span></label>
+        <input id="min_orders" name="min_orders" inputmode="numeric" value="{{ s.min_orders }}"></div>
+    </div>
+    <h3 style="margin-top:18px">D-коин</h3>
+    <p class="hint">Монеты за покупки и копилка из части прибыли. Цена 1 D = копилка ÷ все монеты, поэтому больше копилки
+      никто не получит. С заказа в копилку идёт процент прибыли: обычный заказ — как указано, крупный — до ×2, мелкий — ×0.5.
+      Сейчас в копилке {{ money(s.dcoin_pool) }}, монет у людей {{ s.dcoin_supply }} D.</p>
+    <div class="grid two" style="gap:12px">
+      <div><label for="dcoin_per_usd">D-коинов за $1 покупки <span class="muted">— 0 выключено</span></label>
+        <input id="dcoin_per_usd" name="dcoin_per_usd" inputmode="numeric" value="{{ s.dcoin_per_usd }}"></div>
+      <div><label for="dcoin_pool_pct">% прибыли заказа в копилку <span class="muted">— 0 выключено, до 25</span></label>
+        <input id="dcoin_pool_pct" name="dcoin_pool_pct" inputmode="numeric" value="{{ s.dcoin_pool_pct }}"></div>
+      <div><label for="dcoin_open_days">Обмен на баланс откроется через, дней после запуска</label>
+        <input id="dcoin_open_days" name="dcoin_open_days" inputmode="numeric" value="{{ s.dcoin_open_days }}"></div>
+      <div><label for="dcoin_refund_pct">Возврат денег за заказ — цена вниз, % <span class="muted">— 0 не падает, до 10</span></label>
+        <input id="dcoin_refund_pct" name="dcoin_refund_pct" inputmode="numeric" value="{{ s.dcoin_refund_pct }}"></div>
+    </div>
+    <h3 style="margin-top:18px">Боты без продаж</h3>
+    <label class="switch"><input type="checkbox" name="watch_on" value="1" {{ 'checked' if s.watch.on }}><span>Предупреждать и отключать автоматически</span></label>
+    <div class="grid three" style="gap:12px;margin-top:8px">
+      <div><label for="inactive_days">Дней без продаж до 1-го предупреждения</label>
+        <input id="inactive_days" name="inactive_days" inputmode="numeric" value="{{ s.watch.days }}"></div>
+      <div><label for="warnings">Предупреждений до отключения</label>
+        <input id="warnings" name="warnings" inputmode="numeric" value="{{ s.watch.warnings }}"></div>
+      <div><label for="warn_every_days">Дней между предупреждениями</label>
+        <input id="warn_every_days" name="warn_every_days" inputmode="numeric" value="{{ s.watch.every }}"></div>
+    </div>
+    <div class="hint">Бот не удаляется — отключается; партнёр может включить его снова, и отсчёт начнётся заново. Любая продажа снимает предупреждения. Ваши боты не трогаются.</div>
+  </div>
+
+  <div class="card">
+    <h3>Очередь запросов к FazerCards</h3>
+    <label for="supplier_rate">Не больше запросов в минуту <span class="muted">— на весь проект: сайт, API и все боты</span></label>
+    <input id="supplier_rate" name="supplier_rate" inputmode="numeric" value="{{ s.supplier_rate.per_minute }}" style="max-width:160px">
+    <div class="hint">Сейчас: {{ s.supplier_rate.last_minute }} за последнюю минуту · в очереди {{ s.supplier_rate.waiting }}.
+      Лишние запросы не отклоняются — ждут своей очереди. Покупки и проверка ID идут первыми, загрузка каталога — фоном.</div>
+  </div>
+
+  <div class="card">
+    <h3>Админ-бот в Telegram</h3>
+    <label class="switch"><input type="checkbox" name="admin_2fa" value="1" {{ 'checked' if s.admin_2fa }}><span>Код из Telegram при входе в админку</span></label>
+    <label class="switch"><input type="checkbox" name="daily_report" value="1" {{ 'checked' if s.daily_report }}><span>Отчёт за вчера каждое утро в 9:00</span></label>
+    {% if tg_on %}<p class="muted">Подключён. Откройте бота и нажмите /start — там меню со всеми разделами.</p>
+    {% else %}<p class="muted">Не подключён. На сервере: <span class="mono">sudo bash /home/donatix/app/donatix/deploy/telegram.sh</span></p>{% endif %}
+  </div>
+
+  <button class="btn primary lg">{{ icon('check', 18) }}Сохранить</button>
+</form>
+{% endblock %}

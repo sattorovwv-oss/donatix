@@ -1,0 +1,89 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Мой Telegram-бот — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero">
+  <h1>Мой Telegram-бот</h1>
+  <p>Свой бот-магазин за минуту: игры, звёзды и цены — уже внутри. Заказы оплачиваются с вашего баланса Donatix, прибыль — ваша наценка.</p>
+</section>
+{% for f in flashes %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
+{% if not ready %}<div class="flash warn">{{ icon('alert', 20) }}<span>Конструктор сейчас недоступен. Напишите в поддержку{{ ' ' ~ support_contact if support_contact }}.</span></div>{% endif %}
+
+{% if not elig.ok %}
+<div class="card bot-lock reveal">
+  <div class="pm-head"><span class="tile">{{ icon('shield', 20) }}</span><h3 style="margin:0">Свой бот пока закрыт</h3></div>
+  <p style="margin:10px 0 0">{{ elig.reason }}</p>
+  {% if not elig.blocked and elig.done < elig.need %}
+  <div class="lock-progress" role="progressbar" aria-valuemin="0" aria-valuemax="{{ elig.need }}" aria-valuenow="{{ elig.done }}">
+    <div style="--w: {{ (elig.done / elig.need * 100) | round(1) if elig.need else 100 }}%"></div>
+  </div>
+  <div class="muted small">Выполнено заказов: <b>{{ elig.done }} из {{ elig.need }}</b></div>
+  <a class="btn primary" style="margin-top:12px" href="/panel/catalog?kind=topup">{{ icon('bag', 18) }}Сделать заказ</a>
+  {% elif elig.blocked and support_contact %}
+  <a class="btn primary" style="margin-top:12px" href="https://t.me/{{ support_contact | replace('@', '') }}" target="_blank" rel="noopener">Написать в поддержку</a>
+  {% endif %}
+</div>
+{% elif bots | length < max_bots %}
+<form class="card bot-new reveal" method="post" action="/panel/bots">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="pm-head"><span class="tile">{{ icon('plus', 20) }}</span><h3 style="margin:0">Подключить бота</h3></div>
+  <ol class="bot-steps">
+    <li>Откройте <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> → <span class="mono">/newbot</span> → придумайте имя и получите <b>токен</b>.</li>
+    <li>Узнайте свой <b>Telegram ID</b> у <a href="https://t.me/userinfobot" target="_blank" rel="noopener">@userinfobot</a>.</li>
+    <li>Вставьте оба сюда — бот запустится сам.</li>
+  </ol>
+  <label for="token">Токен бота</label>
+  <input id="token" name="token" required autocomplete="off" placeholder="123456789:AAH…" spellcheck="false">
+  <label for="admin_ids">Ваш Telegram ID <span class="muted">— несколько админов через запятую</span></label>
+  <input id="admin_ids" name="admin_ids" required inputmode="numeric" placeholder="123456789">
+  <button class="btn primary lg block" style="margin-top:16px" {{ 'disabled' if not ready }}>{{ icon('zap-send', 18) }}Подключить и запустить</button>
+  <p class="hint">Токен хранится зашифрованным. Для бота создастся отдельный API-ключ — удалите бота, и ключ отзовётся.</p>
+</form>
+{% endif %}
+
+<div class="section-title"><h2>Мои боты</h2><span class="muted small">{{ bots | length }} из {{ max_bots }}</span></div>
+<div class="list">
+  {% for b in bots %}
+  <div class="card bot-card reveal">
+    <div class="bot-head">
+      <span class="status-dot {{ 'on' if b.running else ('wait' if b.enabled else 'off') }}"></span>
+      <div class="grow"><b>@{{ b.username or 'бот' }}</b>
+        <div class="muted small">админы: <span class="mono">{{ b.admin_ids }}</span></div></div>
+      <span class="badge {{ 'ok' if b.running else ('warn' if b.enabled else '') }}">
+        {{ 'работает' if b.running else ('запускается…' if b.enabled else 'остановлен') }}</span>
+    </div>
+    {% if b.warn_count and b.enabled %}
+    <div class="flash warn" style="margin:10px 0 0">{{ icon('alert', 20) }}<span>Предупреждение {{ b.warn_count }}: в боте давно нет продаж. Если продаж не будет, бот отключится автоматически. Любая продажа снимает предупреждение.</span></div>
+    {% elif b.disabled_reason == 'inactive' %}
+    <div class="flash warn" style="margin:10px 0 0">{{ icon('alert', 20) }}<span>Бот отключён автоматически: долго не было продаж. Включить снова может только администратор — напишите в поддержку{{ ' ' ~ support_contact if support_contact }}.</span></div>
+    {% endif %}
+    {% if b.conflict %}
+    <div class="flash error" style="margin:10px 0 0">{{ icon('alert', 20) }}<span>Этот токен запущен ещё где-то — бот будет отвечать дважды. Остановите другую копию или создайте нового бота.</span></div>
+    {% endif %}
+    <div class="bot-actions">
+      <a class="btn sm primary" href="https://t.me/{{ b.username }}" target="_blank" rel="noopener">Открыть в Telegram</a>
+      {% for action, title in ([('restart', 'Перезапустить'), ('stop', 'Остановить')] if b.enabled else ([] if b.disabled_reason == 'inactive' else [('start', 'Запустить')])) %}
+      <form class="inline" method="post" action="/panel/bots/{{ b.id }}/{{ action }}"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm">{{ title }}</button></form>
+      {% endfor %}
+      <form class="inline" method="post" action="/panel/bots/{{ b.id }}/delete" onsubmit="return confirm('Удалить бота @{{ b.username }}? Он перестанет работать.')"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="btn sm danger">Удалить</button></form>
+    </div>
+    <form class="bot-admins" method="post" action="/panel/bots/{{ b.id }}/admins">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="admin_ids" value="{{ b.admin_ids }}" aria-label="Telegram ID админов" inputmode="numeric">
+      <button class="btn sm">Сменить админов</button>
+    </form>
+  </div>
+  {% else %}<div class="card empty">Ботов пока нет — подключите первый выше.</div>{% endfor %}
+</div>
+
+<div class="card reveal" style="margin-top:18px">
+  <h3>Что умеет бот</h3>
+  <ul class="bot-feats">
+    <li>🕹 Игры по регионам (Free Fire, PUBG, MLBB…) — добавить все одной кнопкой, менять цены и названия пакетов</li>
+    <li>💳 Ваши реквизиты для покупателей: банки и USDT TRC20/BEP20</li>
+    <li>💵 Цены в сомони по свежему курсу, ваша наценка</li>
+    <li>🏦 «Счёт Donatix» — пополнение вашего баланса прямо из бота с чеком</li>
+  </ul>
+  <p class="hint">Управление — в самом боте: команда <span class="mono">/panel</span>.</p>
+</div>
+{% endblock %}

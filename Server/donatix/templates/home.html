@@ -1,0 +1,248 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, kind_icon, media, tg_logo %}
+{% block title %}{{ site_name }} — донат Free Fire, PUBG, Telegram Stars оптом и свой бот-магазин{% endblock %}
+{% block jsonld %}
+<script type="application/ld+json">{{ {
+  "@context": "https://schema.org",
+  "@graph": [
+    {"@type": "Organization", "@id": base_url ~ "/#org", "name": site_name, "url": base_url ~ "/",
+     "logo": base_url ~ "/static/og-icon.png"},
+    {"@type": "WebSite", "@id": base_url ~ "/#site", "name": site_name, "url": base_url ~ "/",
+     "inLanguage": "ru", "publisher": {"@id": base_url ~ "/#org"}},
+    {"@type": "FAQPage", "mainEntity": faq | map('faq_item') | list},
+  ]
+} | tojson }}</script>
+{% endblock %}
+{% block body %}
+<main>
+  <div class="wrap">
+    {% for f in flashes %}<div class="flash {{ f.kind }}" role="status">{{ f.text }}</div>{% endfor %}
+    <section class="hero">
+      <div>
+        <h1>Алмазы Free Fire, UC PUBG и&nbsp;Telegram Stars оптом</h1>
+        <p class="lead">{% if client_bots %}Откройте свой Telegram-бот-магазин за 5 минут без программиста — или подключите сайт по API.{% else %}Для ботов, сайтов и магазинов. Заказы выполняются автоматически.{% endif %}</p>
+        <div class="cta">
+          <a class="btn primary lg" href="/panel/catalog">Каталог и цены</a>
+          <a class="btn lg" href="/register">{{ 'Создать своего бота' if client_bots else 'Подать заявку' }}</a>
+          <a class="btn lg" href="{{ '#constructor' if client_bots else '/docs' }}">{{ 'Как это работает' if client_bots else 'Документация API' }}</a>
+        </div>
+        <ul class="hero-points">
+          <li>{{ icon('check', 16) }}Выполнение за секунды, 24/7</li>
+          <li>{{ icon('check', 16) }}Пополнение любой суммой: Алиф, DC, USDT</li>
+          <li>{{ icon('check', 16) }}Не выполнился заказ — деньги сразу на баланс</li>
+        </ul>
+      </div>
+      <div class="window" aria-label="Пример заказа через API">
+        <div class="chrome"><span class="url mono">POST /api/v1/orders</span><span class="badge ok">201</span></div>
+        <div class="body">
+<pre data-lang="json">{
+  "product_id": "tg-stars",
+  "quantity": 500,
+  "fields": {"telegram_username": "@player"}
+}</pre>
+          <div class="item">
+            <div class="tile sm k-telegram_stars">{{ kind_icon('telegram_stars', 18) }}</div>
+            <div class="grow">
+              <div class="head"><span class="title small">dx-1042 · Telegram Stars 500</span><span class="amount">$8.3025</span></div>
+              <div class="sub small">для @player</div>
+            </div>
+          </div>
+          <div class="item" style="margin-top:8px">
+            <div class="tile sm k-topup">{{ kind_icon('topup', 18) }}</div>
+            <div class="grow">
+              <div class="head"><span class="title small">dx-1043 · PUBG Mobile — 660 UC</span><span class="amount">$10.1520</span></div>
+              <div class="sub small">Player ID 5123456789</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+    {% set ref_href = "/panel/referrals" if user else "/register" %}{% set ref_cta = "Даъват кардан" if user else "Бақайдгирӣ" %}
+    {% include "_ref_promo.html" %}
+  </div>
+
+  {% if tg_channel %}
+  <section class="section tg-sec" id="channel">
+    <div class="wrap">
+      <a class="tg-banner" href="{{ tg_channel }}" target="_blank" rel="noopener">
+        <div class="tgb-art" aria-hidden="true">
+          <span class="tgb-orbit o1"></span><span class="tgb-orbit o2"></span>
+          <span class="tgb-float f1">💎</span><span class="tgb-float f2">🎮</span><span class="tgb-float f3">🎁</span><span class="tgb-float f4">📚</span>
+          <span class="tgb-logo">{{ tg_logo(120) }}</span>
+        </div>
+        <div class="tgb-text">
+          <span class="tgb-badge"><i></i>Официальный канал {{ site_name }}</span>
+          <h2>Уроки, акции и новости — в нашем Telegram</h2>
+          <ul class="tgb-list">
+            <li><b>📚 Уроки</b><span>как пополнить Free Fire, PUBG и Telegram Stars по ID — пошагово</span></li>
+            <li><b>🎁 Акции</b><span>промокоды, скидки и розыгрыши — только для подписчиков</span></li>
+            <li><b>🔥 Новости</b><span>новые игры и цены — узнаёте первыми</span></li>
+            {% if client_bots %}<li><b>🤖 Свой бот</b><span>как открыть магазин доната в Telegram и зарабатывать</span></li>{% endif %}
+          </ul>
+          <span class="btn lg tgb-btn">{{ tg_logo(22) }}Подписаться на канал{{ icon('arrow-right', 18) }}</span>
+        </div>
+      </a>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if popular %}
+  <section class="section" data-reveal id="popular">
+    <div class="wrap">
+      <div class="section-head"><h2>Популярное</h2><p>Чаще всего покупают</p></div>
+      <div class="grid games pop-grid">
+        {% for s in popular %}
+        <a class="game-card" href="{{ s.href if user else '/register' }}">
+          {% if s.image_url %}{{ media(s.image_url, s.title, s.kind) }}{% else %}<div class="media k-{{ s.kind }} pop-tile">{{ kind_icon(s.kind, 34) }}</div>{% endif %}
+          <div class="game-name">{{ s.title }}</div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if client_bots %}
+  <section class="section" data-reveal id="constructor">
+    <div class="wrap grid two" style="align-items:center;gap:32px">
+      <div>
+        <span class="badge accent">Конструктор ботов</span>
+        <h2 style="margin-top:10px">Свой бот-магазин доната в Telegram</h2>
+        <p class="lead" style="font-size:1.05rem">Клиенты покупают у вас — заказы выполняются автоматически, а наценку вы ставите сами.</p>
+        <ul class="checks">
+          <li>{{ icon('check', 16) }}<span>Готовые игры сразу: Free Fire СНГ и Индонезия, PUBG Mobile</span></li>
+          <li>{{ icon('check', 16) }}<span>Своя наценка — цены в боте поднимаются автоматически</span></li>
+          <li>{{ icon('check', 16) }}<span>Оплата на ваши реквизиты: карта, Душанбе Сити, USDT</span></li>
+          <li>{{ icon('check', 16) }}<span>Ваш контакт поддержки, ваши клиенты и их история</span></li>
+          <li>{{ icon('check', 16) }}<span>Обязательная подписка на канал и канал отзывов</span></li>
+          <li>{{ icon('check', 16) }}<span>Подключение бесплатно — без программиста</span></li>
+        </ul>
+        <a class="btn primary lg" href="/register">Создать бота бесплатно</a>
+      </div>
+      <div class="grid steps con-steps">
+        {% for t, d in [
+          ('Регистрация', 'Аккаунт на Donatix за минуту'),
+          ('Бот в @BotFather', 'Создайте бота и скопируйте токен'),
+          ('Вставьте токен', 'В кабинете: «Мой Telegram-бот»'),
+          ('Продавайте', 'Реквизиты, наценка — и бот готов'),
+        ] %}
+        <div class="card feature"><div class="num">{{ loop.index }}</div><h3>{{ t }}</h3><p>{{ d }}</p></div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="section" data-reveal id="catalog">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Каталог</h2>
+        {% if total_products %}<p>{{ total_products }} позиций</p>{% endif %}
+      </div>
+      <div class="grid">
+        {% set defaults = {
+          "telegram_stars": ["от 50 до 10 000 звёзд"],
+          "telegram_premium": ["3, 6 и 12 месяцев"],
+          "topup": ["PUBG Mobile", "Free Fire", "Mobile Legends"],
+          "gift_card": ["Steam", "App Store", "PlayStation", "Google Play"],
+          "game_key": ["Steam", "Xbox", "PlayStation"],
+          "steam_topup": ["USD", "RUB", "KZT", "UAH"],
+          "steam_gift": ["игры по ссылке-приглашению"],
+        } %}
+        {% set links = {"telegram_stars": "/panel/catalog?kind=telegram", "telegram_premium": "/panel/catalog?kind=telegram&tab=premium",
+                        "steam_topup": "/panel/buy/steam-topup", "steam_gift": "/panel/buy/steam-gift"} %}
+        {% for kind, title in kind_titles.items() %}
+        <a class="card feature catalog-link" href="{{ links.get(kind, '/panel/catalog?kind=' ~ kind) }}">
+          <div class="tile k-{{ kind }}">{{ kind_icon(kind, 20) }}</div>
+          <h3>{{ title }}</h3>
+          <div class="chips">
+            {% if by_kind.get(kind) and kind in ('topup', 'gift_card', 'game_key') %}
+              {% for c in by_kind[kind][:5] %}<span class="chip">{{ c.category_name }}</span>{% endfor %}
+              {% if by_kind[kind]|length > 5 %}<span class="chip">ещё {{ by_kind[kind]|length - 5 }}</span>{% endif %}
+            {% else %}
+              {% for d in defaults[kind] %}<span class="chip">{{ d }}</span>{% endfor %}
+            {% endif %}
+          </div>
+          <span class="catalog-go">Смотреть цены {{ icon('arrow-right', 14) }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" data-reveal>
+    <div class="wrap">
+      <div class="section-head"><h2>Как подключиться</h2></div>
+      <div class="grid steps">
+        {% for t, d in [
+          ('Заявка', 'Регистрация и проверка проекта'),
+          ('Баланс', 'Алиф, DC, Эсхата, USDT, Binance'),
+          ('Подключение', 'API-ключ или заказы в панели'),
+        ] %}
+        <div class="card feature"><div class="num">{{ loop.index }}</div><h3>{{ t }}</h3><p>{{ d }}</p></div>
+        {% endfor %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" data-reveal>
+    <div class="wrap grid two" style="align-items:center;gap:32px">
+      <div>
+        <h2>Для разработчиков</h2>
+        <ul class="checks">
+          <li>{{ icon('check', 16) }}<span>Один метод для всех товаров</span></li>
+          <li>{{ icon('check', 16) }}<span>Webhook с подписью HMAC</span></li>
+          <li>{{ icon('check', 16) }}<span>Защита от двойного списания</span></li>
+        </ul>
+        <a class="btn" href="/docs">Открыть документацию</a>
+      </div>
+<pre data-lang="python">import uuid, requests
+
+r = requests.post(
+    "{{ request.base_url }}api/v1/orders",
+    headers={"X-API-Key": KEY,
+             "Idempotency-Key": str(uuid.uuid4())},
+    json={"product_id": "tg-stars", "quantity": 100,
+          "fields": {"telegram_username": "@player"}},
+)
+print(r.json()["order"]["status"])</pre>
+    </div>
+  </section>
+
+  <section class="section" data-reveal id="pricing">
+    <div class="wrap">
+      <div class="section-head">
+        <h2>Цены</h2>
+        <p>Без абонентской платы. Для крупных партнёров — скидки.</p>
+      </div>
+      <div class="card table-wrap" style="max-width:640px">
+        {% if examples %}
+        <table>
+          <tr><th>Пример</th><th class="num">Цена</th></tr>
+          {% for label, price in examples %}<tr><td>{{ label }}</td><td class="num mono">${{ price }}</td></tr>{% endfor %}
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" data-reveal id="faq">
+    <div class="wrap" style="max-width:760px">
+      <div class="section-head"><h2>Вопросы</h2></div>
+      {% for q, a in faq %}
+      <details class="faq"><summary>{{ q }}</summary><p>{{ a }}</p></details>
+      {% endfor %}
+    </div>
+  </section>
+
+  <section class="section" data-reveal>
+    <div class="wrap">
+      <div class="card cta-card">
+        <h2>{{ 'Запустите свой бот-магазин сегодня' if client_bots else 'Подключить свой проект' }}</h2>
+        {% if support_contact %}<p class="muted">Вопросы — {{ support_contact }}</p>{% endif %}
+        <a class="btn primary lg" href="/register">{{ 'Создать бота бесплатно' if client_bots else 'Подать заявку' }}</a>
+      </div>
+    </div>
+  </section>
+</main>
+{% endblock %}

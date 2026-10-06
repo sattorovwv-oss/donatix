@@ -1,0 +1,12 @@
+{% from "_icons.html" import media, kind_icon, status %}
+{% set short = {'topup': 'Пополнение', 'gift_card': 'Карта', 'game_key': 'Ключ', 'telegram_stars': 'Telegram', 'telegram_premium': 'Telegram', 'steam_topup': 'Steam', 'steam_gift': 'Steam гифт'} %}
+{% set pack = o.product_name | pack_title(o.kind) %}
+<a class="item order-card" href="/panel/orders/{{ o.public_id }}">
+  {% if o.image_url %}{{ media(o.image_url, o.game or o.product_name, o.kind, 'oc-img') }}{% else %}<span class="tile oc-img k-{{ o.kind }}">{{ kind_icon(o.kind, 26) }}</span>{% endif %}
+  <div class="grow">
+    <div class="head"><span class="title">{{ o.public_id }}</span><span class="amount">{{ money(o.total_micro) }}</span></div>
+    {% if o.recipient is defined %}{% set who = o.recipient %}{% else %}{% set who = (o.fields_json | fromjson).values() | join(', ') %}{% endif %}
+    <div class="sub oc-line">{{ short.get(o.kind, kind_titles.get(o.kind, '')) }}{% if o.game and o.game not in pack %} • {{ o.game }}{% endif %} • {{ pack }}{% if who %} • {{ who }}{% endif %}</div>
+    <div class="meta">{{ status(o.status) }}<span class="pill">{{ o.created_at | dt }}</span></div>
+  </div>
+</a>

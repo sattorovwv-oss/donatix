@@ -1,0 +1,61 @@
+{% extends "panel/_layout.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Уведомления — {{ site_name }}{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Уведомления</h1></section>
+<div class="card push-card" id="push-card">
+  <div class="grow"><b>🔔 Уведомления на этом устройстве</b>
+    <div class="muted small" id="push-state">Проверяем…</div></div>
+  <div class="push-btns">
+    <button class="btn primary sm" type="button" id="push-on" hidden>Включить</button>
+    <button class="btn sm" type="button" id="push-test" hidden>Проверить</button>
+    <button class="btn sm" type="button" id="push-off" hidden>Выключить</button>
+  </div>
+</div>
+<script>
+document.addEventListener("DOMContentLoaded", function () {   // dxPush объявлен ниже, в общем шаблоне
+  var st = document.getElementById("push-state"), on = document.getElementById("push-on"),
+      test = document.getElementById("push-test"), off = document.getElementById("push-off");
+  var TEXT = { on: "✅ Включены — сообщим о заказах и пополнениях, даже если приложение закрыто.",
+               off: "Выключены. Включите — и не придётся проверять статус заказа вручную.",
+               denied: "⛔ Запрещены в настройках. Откройте настройки телефона → Приложения → Donatix (или Chrome) → Уведомления → Разрешить.",
+               unsupported: "Этот браузер не поддерживает уведомления. Установите приложение Donatix или откройте сайт в Chrome." };
+  function show(s) { st.textContent = TEXT[s]; on.hidden = s !== "off"; test.hidden = off.hidden = s !== "on"; }
+  function run(p, after) { p.then(after).catch(function (e) { st.textContent = e.message; }); }
+  window.dxPush.state().then(show);
+  on.onclick = function () { run(window.dxPush.enable(), function () { show("on"); }); };
+  off.onclick = function () { run(window.dxPush.disable(), function () { show("off"); }); };
+  test.onclick = function () { run(window.dxPush.test(), function (d) {
+    st.textContent = d.ok ? "📨 Отправили тестовое уведомление — оно придёт через пару секунд." : (d.error || "Не отправилось."); }); };
+});
+</script>
+{% if bot_username %}<div class="card notif-code">
+  <div><b>🔐 Бот поддержки в Telegram</b>
+    <div class="muted small">Напишите боту свой email — код придёт сюда. Нажмите «Копировать» и отправьте код боту.</div></div>
+  <a class="btn primary" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener">Открыть @{{ bot_username }}</a>
+</div>{% endif %}
+<div class="list">
+  {% for n in rows %}
+  {% if n.code %}
+  <div class="item reveal notif-with-code">
+    <div class="tile sm {{ 'g1' if not n.read_at else '' }}">🔐</div>
+    <div class="grow">
+      <div class="title">Код для бота поддержки</div>
+      <div class="code-row"><span class="big-code">{{ n.code }}</span>
+        <button class="btn primary sm" type="button" data-copy="{{ n.code }}">{{ icon('copy', 16) }}Копировать</button></div>
+      <div class="sub">{{ n.text.split('\n')[1:] | join(' ') }}</div>
+      <div class="sub">{{ n.created_at | dt }}{% if not n.read_at %} · <b>новое</b>{% endif %}</div>
+    </div>
+  </div>
+  {% else %}
+  <a class="item reveal" href="{{ n.link or '#' }}">
+    <div class="tile sm {{ 'g1' if not n.read_at else '' }}">{{ icon('bell', 18) }}</div>
+    <div class="grow">
+      <div class="title">{{ n.text }}</div>
+      <div class="sub">{{ n.created_at | dt }}{% if not n.read_at %} · <b>новое</b>{% endif %}</div>
+    </div>
+  </a>
+  {% endif %}
+  {% else %}<div class="card empty">Уведомлений пока нет.</div>{% endfor %}
+</div>
+{% endblock %}
