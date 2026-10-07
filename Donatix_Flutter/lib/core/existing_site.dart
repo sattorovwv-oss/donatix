@@ -343,7 +343,12 @@ class ExistingSiteApi {
       }, idempotency: idempotency);
     }
     if (path == '/api/v1/me' && api.personalApiKey == null) {
-      return profileMe(await page('/panel'));
+      final doc = await page('/panel');
+      if (doc.querySelector('.tier-card.ok') != null) {
+        await bootstrap();
+        return json('GET', '/api/v1/me');
+      }
+      return profileMe(doc);
     }
     if (isGet && path == '/api/v1/balance' && api.personalApiKey == null) {
       final me = profileMe(await page('/panel'));
@@ -410,7 +415,7 @@ class ExistingSiteApi {
       throw const ApiFailure('Эта функция требует отдельной серверной интеграции.', 501);
     }
     if (api.personalApiKey == null && path.startsWith('/api/v1/')) {
-      throw const ApiFailure('Для этой операции требуется активация аккаунта администратором.', 403);
+      await guard();
     }
     if (!isGet && path.startsWith('/api/v1/')) await guard();
     return null;
@@ -429,6 +434,7 @@ class ExistingSiteApi {
     if (api.status != 'active') {
       throw const ApiFailure('Аккаунт ждёт активации администратором.', 403);
     }
+    if (api.personalApiKey == null) { await bootstrap(); }
   }
 
   static String totalPrice(String price, String quantity, {String divisor = '1'}) {
@@ -461,6 +467,7 @@ class ExistingSiteApi {
           '/api/v1/products/' + Uri.encodeComponent(id)))['product'] as Map);
 
   Future<Map<String, dynamic>> quote(Map<String, dynamic> body) async {
+    if (api.personalApiKey == null) { await guard(); }
     final owner = api.userId;
     final p = await product(body['product_id'].toString());
     api.requireAccount(owner);
