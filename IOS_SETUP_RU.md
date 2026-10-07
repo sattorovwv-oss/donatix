@@ -42,8 +42,10 @@ APNs показывает нейтральное «Новое уведомлен
 4. Создать приложение в App Store Connect с тем же Bundle ID.
 5. В Firebase добавить iOS-приложение с этим Bundle ID. Скачать GoogleService-Info.plist.
 6. Загрузить APNs authentication key владельца в Firebase → Project settings → Cloud Messaging.
-7. В защищённых переменных Codemagic сохранить `GOOGLE_SERVICE_INFO_PLIST`: полное
-   XML-содержимое plist. Этот файл workflow поместит в ios/Runner при сборке.
+7. В Codemagic → приложение Donatix → Environment variables создать группу
+   `donatix_ios`. В ней сохранить защищённую переменную `GOOGLE_SERVICE_INFO_PLIST`:
+   полное XML-содержимое plist (без base64). `ios-release` импортирует эту группу
+   через `environment.groups` и помещает файл в ios/Runner при сборке.
 
 Файлы сертификатов, Apple .p8, пароль keystore и сервисный аккаунт Firebase в исходники
 не включаются. Нужные возможности уже прописаны в Runner.entitlements; подпись и профили
@@ -93,9 +95,10 @@ Apple-вход не использует Firebase Auth. Firebase здесь до
 Перед release проверяется наличие Firebase-конфига нужного приложения и сервер версии 4.
 Для iOS с Google-входом дополнительно требуется включённый Apple-вход на сервере.
 
-Секретные переменные должны быть доступны выбранному workflow: через Application/Team
-environment variables, а при использовании группы — добавить её в environment.groups
-в YAML. DONATIX_URL задан в YAML: заменить на HTTPS-домен сервера владельца при необходимости.
+Группы Application/Team environment variables должны существовать в Codemagic:
+`donatix_android` для android-release, `donatix_ios` для ios-release. Каждая группа
+уже подключена в соответствующем YAML через environment.groups.
+DONATIX_URL задан в YAML: заменить на HTTPS-домен сервера владельца при необходимости.
 Версия сборки растёт с PROJECT_BUILD_NUMBER Codemagic. При переносе проекта или ранее
 опубликованной более высокой версии задать DONATIX_BUILD_NUMBER больше предыдущего номера.
 

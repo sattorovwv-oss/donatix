@@ -32,6 +32,8 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
+      groups:
+      - donatix_android
       flutter: 3.35.4
       java: '17'
       vars: *id001
@@ -114,6 +116,8 @@ workflows:
     instance_type: mac_mini_m2
     max_build_duration: 75
     environment:
+      groups:
+      - donatix_ios
       flutter: 3.35.4
       xcode: latest
       cocoapods: default

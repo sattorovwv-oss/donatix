@@ -7,8 +7,11 @@
    Полученный `google-services.json` положить в
    `Donatix_Flutter/android/app/google-services.json`. Не использовать пример или
    чужой проект. Если файла нет, клиент сохраняет резервную фоновую проверку.
-2. Для production CI задать защищённую переменную `GOOGLE_SERVICES_JSON` с
-   содержимым этого файла. Release workflow проверит совпадение package name.
+2. В Codemagic → приложение Donatix → Environment variables создать группу
+   `donatix_android`. В ней задать защищённую переменную `GOOGLE_SERVICES_JSON`
+   с полным содержимым `google-services.json` (обычный JSON, без base64).
+   `android-release` импортирует эту группу через `environment.groups`.
+   Release workflow проверит совпадение package name.
 3. В том же Firebase-проекте получить service-account JSON с правом отправки FCM.
    Хранить его только на сервере, например `/etc/donatix/firebase-service-account.json`.
    Доступ должен быть только у пользователя сервиса. Этот JSON не включать в APK,
