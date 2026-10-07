@@ -43,6 +43,8 @@ class _AdminScreenState extends State<AdminScreen> {
   final scroll = ScrollController();
   final anchors = <String, GlobalKey>{};
   int generation = 0;
+  String? loadedPath;
+  bool loading = false;
   @override
   void initState() {
     super.initState();
@@ -86,6 +88,8 @@ class _AdminScreenState extends State<AdminScreen> {
     timer?.cancel();
     setState(() {
       error = null;
+      loading = true;
+      if (path != loadedPath || initial != null) data = null;
       job = null;
       anchors.clear();
     });
@@ -138,23 +142,43 @@ class _AdminScreenState extends State<AdminScreen> {
       final csrf = doc.querySelector('input[name="csrf"]')?.attributes['value'];
       if (csrf != null) widget.api.csrf = csrf;
       if (!mounted || id != generation) return;
-      setState(() => data = doc);
+      setState(() {
+        data = doc;
+        loadedPath = path;
+      });
       if (route == '/admin/catalog-sync') poll();
     } catch (e) {
       if (mounted && generation == id) setState(() => error = e);
+    } finally {
+      if (mounted && generation == id) setState(() => loading = false);
     }
   }
 
   Future<void> poll() async {
+    final id = generation;
     timer?.cancel();
     try {
       final d = await widget.api.get('/admin/catalog-sync/status');
-      if (mounted && route == '/admin/catalog-sync') setState(() => job = d);
-      if (d['running'] == true && mounted) {
+      if (mounted && id == generation && route == '/admin/catalog-sync') {
+        setState(() {
+          job = d;
+          for (final button
+              in data?.querySelectorAll('.sync-btn') ?? <dom.Element>[]) {
+            if (d['running'] == true) {
+              button.attributes['disabled'] = '';
+            } else {
+              button.attributes.remove('disabled');
+            }
+          }
+          final local = data?.querySelector('#k-local');
+          if (local != null) local.text = text(d['images_local']);
+        });
+      }
+      if (d['running'] == true && mounted && id == generation) {
         timer = Timer(const Duration(milliseconds: 1500), poll);
       }
     } catch (_) {
-      if (mounted && route == '/admin/catalog-sync') {
+      if (mounted && id == generation && route == '/admin/catalog-sync') {
         timer = Timer(const Duration(seconds: 4), poll);
       }
     }
@@ -205,11 +229,14 @@ class _AdminScreenState extends State<AdminScreen> {
       'good',
       'danger',
       'g2',
+      'g3',
+      'g4',
       'g5',
       'plus',
       'minus',
       'c-done',
       'c-ref',
+      'c-created',
     ].contains(c),
     orElse: () => 'accent',
   );
@@ -228,6 +255,7 @@ class _AdminScreenState extends State<AdminScreen> {
             'minus',
             'c-done',
             'c-ref',
+            'c-created',
           ].any(e.classes.contains)
         ? colors.semantic(kind(e))
         : colors.ink,
@@ -257,10 +285,10 @@ class _AdminScreenState extends State<AdminScreen> {
       color: colors.ink,
     ),
   );
-  Widget icon(dom.Element e, {double size = 20}) {
+  Widget icon(dom.Element e, {double size = 20, Color? color}) {
     var svg = e.outerHtml.replaceAll(
       'currentColor',
-      '#${colors.accent.toARGB32().toRadixString(16).substring(2)}',
+      '#${(color ?? colors.semantic(kind(e.parent ?? e))).toARGB32().toRadixString(16).substring(2)}',
     );
     svg = svg.replaceAll('viewbox=', 'viewBox=');
     return SvgPicture.string(svg, width: size, height: size);
@@ -354,77 +382,109 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget table(dom.Element e) {
     final rows = e.querySelectorAll('tr');
+    int span(dom.Element cell) =>
+        (int.tryParse(cell.attributes['colspan'] ?? '') ?? 1).clamp(1, 64);
     final count = rows.fold<int>(
       0,
-      (v, row) => math.max(
-        v,
-        row.children.fold<int>(
-          0,
-          (n, cell) =>
-              n + (int.tryParse(cell.attributes['colspan'] ?? '') ?? 1),
-        ),
+      (value, row) => math.max(
+        value,
+        row.children.fold<int>(0, (sum, cell) => sum + span(cell)),
       ),
     );
     if (count == 0) return const SizedBox.shrink();
     final widths = List<double>.filled(count, 96);
     for (final row in rows) {
-      for (var i = 0; i < math.min(count, row.children.length); i++) {
-        widths[i] = math.max(
-          widths[i],
-          (row.children[i].text.trim().length * 6.5 + 24)
-              .clamp(96, 300)
-              .toDouble(),
-        );
+      var index = 0;
+      for (final cell in row.children) {
+        if (span(cell) == 1) {
+          widths[index] = math.max(
+            widths[index],
+            (cell.text.trim().length * 6.5 + 24).clamp(96, 300).toDouble(),
+          );
+        }
+        index += span(cell);
       }
     }
+    Widget cells(dom.Element row) {
+      var index = 0;
+      final widgets = <Widget>[];
+      for (final cell in row.children) {
+        final end = index + span(cell);
+        final width = widths
+            .sublist(index, end)
+            .fold<double>(0, (sum, n) => sum + n);
+        widgets.add(
+          SizedBox(
+            width: width,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+              child: cell.localName == 'th'
+                  ? Text(
+                      cell.text.trim().toUpperCase(),
+                      textAlign: cell.classes.contains('num')
+                          ? TextAlign.end
+                          : TextAlign.start,
+                      style: TextStyle(
+                        fontSize: 11.8,
+                        letterSpacing: .6,
+                        color: colors.muted,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  : Align(
+                      alignment: cell.classes.contains('num')
+                          ? Alignment.centerRight
+                          : Alignment.centerLeft,
+                      child: cell.children.isEmpty
+                          ? SelectableText(cell.text.trim(), style: style(cell))
+                          : vertical(cell.nodes.map(node), gap: 2),
+                    ),
+            ),
+          ),
+        );
+        index = end;
+      }
+      if (index < count) {
+        widgets.add(
+          SizedBox(
+            width: widths.sublist(index).fold<double>(0, (sum, n) => sum + n),
+          ),
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: widgets,
+      );
+    }
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      child: Table(
-        columnWidths: {
-          for (var i = 0; i < count; i++) i: FixedColumnWidth(widths[i]),
-        },
-        defaultVerticalAlignment: TableCellVerticalAlignment.middle,
-        border: TableBorder(horizontalInside: BorderSide(color: colors.line)),
-        children: [
-          for (final row in rows)
-            TableRow(
-              children: [
-                for (var i = 0; i < count; i++)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 8,
-                    ),
-                    child: i < row.children.length
-                        ? row.children[i].localName == 'th'
-                              ? Text(
-                                  row.children[i].text.trim().toUpperCase(),
-                                  style: TextStyle(
-                                    fontSize: 11.8,
-                                    letterSpacing: .6,
-                                    color: colors.muted,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                  textAlign:
-                                      row.children[i].classes.contains('num')
-                                      ? TextAlign.end
-                                      : TextAlign.start,
-                                )
-                              : Align(
-                                  alignment:
-                                      row.children[i].classes.contains('num')
-                                      ? Alignment.centerRight
-                                      : Alignment.centerLeft,
-                                  child: vertical(
-                                    row.children[i].nodes.map(node),
-                                    gap: 2,
-                                  ),
-                                )
-                        : const SizedBox.shrink(),
-                  ),
-              ],
-            ),
-        ],
+      child: SizedBox(
+        width: widths.fold<double>(0, (sum, n) => sum + n),
+        child: Column(
+          children: [
+            for (final row in rows)
+              Container(
+                decoration: BoxDecoration(
+                  border: Border(bottom: BorderSide(color: colors.line)),
+                ),
+                child: Opacity(
+                  opacity:
+                      (double.tryParse(
+                                RegExp(r'opacity:\s*([\d.]+)')
+                                        .firstMatch(
+                                          row.attributes['style'] ?? '',
+                                        )
+                                        ?.group(1) ??
+                                    '',
+                              ) ??
+                              1)
+                          .clamp(0, 1),
+                  child: cells(row),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -643,16 +703,75 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 
   Widget formLayout(dom.Element e, List<Widget> children) {
+    if (e.classes.contains('filters')) {
+      final parts = e.nodes
+          .where((n) => n is! dom.Text || n.text.trim().isNotEmpty)
+          .toList();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < parts.length; i++)
+            if (parts[i] is dom.Element &&
+                (parts[i] as dom.Element).classes.contains('full'))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: children[i],
+              ),
+          SiteGrid(
+            columns: 2,
+            breakpoint: 480,
+            gap: 10,
+            children: [
+              for (var i = 0; i < parts.length; i++)
+                if (parts[i] is! dom.Element ||
+                    !(parts[i] as dom.Element).classes.contains('full'))
+                  children[i],
+            ],
+          ),
+        ],
+      );
+    }
+    if (e.classes.contains('sync-actions')) {
+      return SiteGrid(minimum: 220, gap: 10, children: children);
+    }
+    if (e.classes.contains('pm-grid')) {
+      return LayoutBuilder(
+        builder: (c, b) => b.maxWidth <= 480 || children.length != 2
+            ? vertical(children, gap: 12)
+            : Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(flex: 2, child: children[0]),
+                  const SizedBox(width: 12),
+                  Expanded(child: children[1]),
+                ],
+              ),
+      );
+    }
+    if (e.classes.contains('pm-head')) {
+      return Wrap(
+        spacing: 10,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: children,
+      );
+    }
     if (e.classes.contains('grid') || e.classes.contains('filters')) {
       return SiteGrid(
-        columns: e.classes.contains('three') ? 3 : 2,
-        breakpoint: e.classes.contains('filters') ? 480 : 700,
+        minimum: e.classes.contains('three')
+            ? 250
+            : e.classes.contains('two')
+            ? 320
+            : 240,
         gap: 12,
         children: children,
       );
     }
     if (e.classes.contains('card')) {
       return SiteCard(child: vertical(children, gap: 8));
+    }
+    if (e.classes.contains('list') || e.classes.contains('pay-form')) {
+      return vertical(children, gap: 14);
     }
     if (e.classes.contains('flash')) {
       return Container(
@@ -710,6 +829,115 @@ class _AdminScreenState extends State<AdminScreen> {
       child = icon(n);
     } else if (n.localName == 'table') {
       child = table(n);
+    } else if (n.classes.contains('vbars') || n.classes.contains('hbars')) {
+      child = trafficBars(n);
+    } else if (n.classes.contains('vbars-x') || n.classes.contains('hbars-x')) {
+      child = Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          for (final label in n.children)
+            Expanded(
+              child: Text(
+                label.text.trim(),
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 10.9, color: colors.muted),
+              ),
+            ),
+        ],
+      );
+    } else if (n.classes.contains('fn-row')) {
+      child = funnelRow(n);
+    } else if (n.classes.contains('fin-bar')) {
+      child = financialBar(n);
+    } else if (n.classes.contains('fin-rows')) {
+      child = vertical(
+        n.children.map(
+          (row) => Container(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            decoration: BoxDecoration(
+              border: Border(bottom: BorderSide(color: colors.line)),
+            ),
+            child: Row(
+              children: [
+                for (final cell in row.children) Expanded(child: node(cell)),
+              ],
+            ),
+          ),
+        ),
+      );
+    } else if (n.classes.contains('kinds-head') ||
+        n.classes.contains('kr-top')) {
+      child = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (var i = 0; i < n.children.length; i++)
+            if (i == 0)
+              Expanded(child: node(n.children[i]))
+            else
+              SizedBox(
+                width: 52,
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: node(n.children[i]),
+                ),
+              ),
+        ],
+      );
+    } else if (n.classes.contains('kr-sum')) {
+      child = Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: n.children.map(node).toList(),
+      );
+    } else if (n.classes.contains('kind-row') ||
+        n.classes.contains('ins') ||
+        n.classes.contains('fin-item')) {
+      child = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: n.classes.contains('profit')
+              ? colors.soft('ok')
+              : colors.surface2,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: colors.line),
+        ),
+        child: vertical(n.nodes.map(node), gap: 4),
+      );
+    } else if (n.classes.contains('ins-grid')) {
+      child = SiteGrid(
+        minimum: 200,
+        gap: 12,
+        children: n.children.map(node).toList(),
+      );
+    } else if (n.classes.contains('online')) {
+      child = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: colors.surface,
+          border: Border.all(color: colors.line),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SitePulseDot(color: colors.semantic('ok')),
+            const SizedBox(width: 8),
+            Text(n.text.trim()),
+          ],
+        ),
+      );
+    } else if (n.classes.contains('tile')) {
+      child = Container(
+        width: n.classes.contains('sm') ? 32 : 40,
+        height: n.classes.contains('sm') ? 32 : 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: colors.soft(kind(n)),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: n.querySelector('svg') != null
+            ? icon(n.querySelector('svg')!)
+            : Text(n.text.trim()),
+      );
     } else if (n.classes.contains('chart')) {
       child = chart(n);
     } else if (n.classes.contains('chart-wrap') &&
@@ -782,7 +1010,14 @@ class _AdminScreenState extends State<AdminScreen> {
             child: Row(
               children: [
                 for (final item in n.nodes)
-                  if (item is dom.Element && item.classes.contains('grow'))
+                  if (item is dom.Text && item.text.trim().isNotEmpty)
+                    Expanded(
+                      child: Text(
+                        item.text.trim(),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    )
+                  else if (item is dom.Element && item.classes.contains('grow'))
                     Expanded(child: node(item))
                   else
                     Padding(
@@ -929,16 +1164,14 @@ class _AdminScreenState extends State<AdminScreen> {
                 children: children,
               ),
             )
+          : n.classes.contains('fin-flow')
+          ? financialFlow(children)
           : SiteGrid(
-              columns:
-                  n.classes.contains('two') ||
-                      n.classes.contains('dash-two') ||
-                      n.classes.contains('tr-two')
-                  ? 2
-                  : n.classes.contains('three')
-                  ? 3
-                  : null,
-              breakpoint: n.classes.contains('dash-two') ? 900 : 700,
+              minimum: n.classes.contains('three')
+                  ? 250
+                  : n.classes.contains('two')
+                  ? 320
+                  : 240,
               children: children,
             );
     } else if (n.classes.contains('flash') || n.classes.contains('todo-item')) {
@@ -954,9 +1187,7 @@ class _AdminScreenState extends State<AdminScreen> {
           style: TextStyle(color: colors.semantic(kind(n)), height: 1.55),
         ),
       );
-    } else if (n.classes.contains('card') ||
-        n.classes.contains('fin-item') ||
-        n.classes.contains('ins')) {
+    } else if (n.classes.contains('card')) {
       child = SiteCard(child: vertical(n.nodes.map(node), gap: 8));
     } else if (n.classes.contains('card-head') ||
         n.classes.contains('section-title') ||
@@ -1003,6 +1234,151 @@ class _AdminScreenState extends State<AdminScreen> {
     }
     return child;
   }
+
+  double percent(dom.Element? e, String variable) =>
+      (double.tryParse(
+                RegExp(
+                      '${RegExp.escape(variable)}\\s*:\\s*([\\d.]+)%',
+                    ).firstMatch(e?.attributes['style'] ?? '')?.group(1) ??
+                    '',
+              ) ??
+              0)
+          .clamp(0, 100)
+          .toDouble();
+
+  Widget trafficBars(dom.Element e) {
+    final daily = e.classes.contains('vbars');
+    final height = daily ? 200.0 : 130.0;
+    return Semantics(
+      label: daily ? 'Посетители по дням' : 'По часам',
+      child: SizedBox(
+        height: height,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            for (final bar in e.children)
+              Expanded(
+                child: Tooltip(
+                  message: (bar.attributes['data-tip'] ?? '').replaceAll(
+                    '|',
+                    '\n',
+                  ),
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(
+                      begin: 0,
+                      end: percent(
+                        bar.querySelector(daily ? '.vb-bar' : 'span'),
+                        '--h',
+                      ),
+                    ),
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : const Duration(milliseconds: 700),
+                    curve: siteEase,
+                    builder: (c, value, _) => Container(
+                      height: math.max(2, height * value / 100),
+                      margin: const EdgeInsets.symmetric(horizontal: 1),
+                      decoration: BoxDecoration(
+                        color: e.classes.contains('buys')
+                            ? colors.semantic('c-done')
+                            : colors.accent.withValues(alpha: .85),
+                        borderRadius: const BorderRadius.vertical(
+                          top: Radius.circular(4),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget funnelRow(dom.Element e) => Padding(
+    padding: const EdgeInsets.only(bottom: 10),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                e.querySelector('.fn-t')?.text ?? '',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            Text(
+              e.querySelector('.fn-n')?.text ?? '',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              e.querySelector('.fn-c')?.text ?? '',
+              style: TextStyle(fontSize: 13, color: colors.muted),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        TweenAnimationBuilder<double>(
+          tween: Tween(
+            begin: 0,
+            end: percent(e.querySelector('.fn-bar'), '--w') / 100,
+          ),
+          duration: MediaQuery.disableAnimationsOf(context)
+              ? Duration.zero
+              : const Duration(milliseconds: 500),
+          builder: (c, value, _) => ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: value,
+              minHeight: 12,
+              color: colors.accent,
+              backgroundColor: colors.surface2,
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget financialBar(dom.Element e) => ClipRRect(
+    borderRadius: BorderRadius.circular(6),
+    child: SizedBox(
+      height: 12,
+      child: LayoutBuilder(
+        builder: (c, b) => Row(
+          children: [
+            for (final part in e.children)
+              SizedBox(
+                width: b.maxWidth * percent(part, 'width') / 100,
+                child: ColoredBox(
+                  color: part.classes.contains('gain')
+                      ? colors.semantic('ok')
+                      : colors.accentLine,
+                ),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  Widget financialFlow(List<Widget> children) => LayoutBuilder(
+    builder: (c, b) => b.maxWidth <= 700
+        ? vertical(children, gap: 10)
+        : Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              for (var i = 0; i < children.length; i++)
+                if (i.isOdd)
+                  SizedBox(width: 40, child: Center(child: children[i]))
+                else
+                  Expanded(child: children[i]),
+            ],
+          ),
+  );
 
   Widget heat(dom.Element e) => SingleChildScrollView(
     scrollDirection: Axis.horizontal,
@@ -1189,11 +1565,107 @@ class _AdminScreenState extends State<AdminScreen> {
             )
           : node(e),
   ];
+  Widget navigation({bool drawer = false}) => ListView(
+    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+    children: [
+      if (drawer)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset('assets/logo.png', width: 32, height: 32),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Text(
+                  'Donatix',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+                ),
+              ),
+              IconButton(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.close),
+                tooltip: 'Закрыть меню',
+              ),
+            ],
+          ),
+        ),
+      for (final element
+          in data?.querySelectorAll('aside nav > h4, aside nav > a[href]') ??
+              <dom.Element>[])
+        if (element.localName == 'h4')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 14, 10, 8),
+            child: Text(
+              element.text.trim().toUpperCase(),
+              style: TextStyle(
+                fontSize: 11.8,
+                color: colors.muted,
+                fontWeight: FontWeight.w600,
+                letterSpacing: .6,
+              ),
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Material(
+              color: element.classes.contains('on')
+                  ? colors.accentSoft
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: () {
+                  if (drawer) Navigator.pop(context);
+                  link(element.attributes['href']!);
+                },
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    children: [
+                      if (element.querySelector('svg')
+                          case final dom.Element svg)
+                        icon(
+                          svg,
+                          size: 18,
+                          color: element.classes.contains('on')
+                              ? colors.accent
+                              : colors.muted,
+                        ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          element.querySelector('span')?.text.trim() ??
+                              element.text.trim(),
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: element.classes.contains('on')
+                                ? colors.accent
+                                : colors.ink,
+                            fontWeight: element.classes.contains('on')
+                                ? FontWeight.w600
+                                : FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+    ],
+  );
   @override
   Widget build(BuildContext context) {
     final main =
         data?.querySelector('main#main') ?? data?.querySelector('main');
-    final nav = data?.querySelectorAll('aside nav a[href]') ?? [];
     final title =
         main?.querySelector('h1')?.text.trim() ?? 'Администрация Donatix';
     final blocks = main == null
@@ -1209,9 +1681,52 @@ class _AdminScreenState extends State<AdminScreen> {
             AdminLayout.sync => sync(main),
             AdminLayout.traffic => traffic(main),
           };
+    final wide = MediaQuery.sizeOf(context).width > 860;
+    final content = main == null
+        ? StateView(error: error, retry: load)
+        : RefreshIndicator(
+            onRefresh: load,
+            child: ListView(
+              controller: scroll,
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 6, 16, 40),
+              children: [
+                if (loading) const LinearProgressIndicator(),
+                if (error != null)
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: Text(
+                      '$error',
+                      style: TextStyle(color: colors.semantic('bad')),
+                    ),
+                  ),
+                for (var i = 0; i < blocks.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 14),
+                    child: SiteReveal(index: i, child: blocks[i]),
+                  ),
+              ],
+            ),
+          );
     return Scaffold(
       appBar: AppBar(
-        title: Text(title),
+        toolbarHeight: 58,
+        title: Semantics(
+          label: title,
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset('assets/logo.png', width: 30, height: 30),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Donatix',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+              ),
+            ],
+          ),
+        ),
         actions: [
           IconButton(
             onPressed: load,
@@ -1220,65 +1735,24 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
         ],
       ),
-      drawer: Drawer(
-        child: SafeArea(
-          child: ListView(
-            children: [
-              const Padding(
-                padding: EdgeInsets.all(20),
-                child: Text(
-                  'Админка Donatix',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                ),
-              ),
-              for (final a in nav)
-                ListTile(
-                  selected: a.classes.contains('on'),
-                  title: Text(a.text.trim()),
-                  onTap: () {
-                    Navigator.pop(context);
-                    link(a.attributes['href']!);
-                  },
-                ),
-              if (nav.every(
-                (a) => a.attributes['href'] != '/admin/account-deletions',
-              ))
-                ListTile(
-                  title: const Text('Заявки на удаление данных'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    link('/admin/account-deletions');
-                  },
-                ),
-            ],
-          ),
+      drawer: wide
+          ? null
+          : Drawer(child: SafeArea(child: navigation(drawer: true))),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1280),
+          child: wide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(width: 236, child: navigation()),
+                    const SizedBox(width: 28),
+                    Expanded(child: content),
+                  ],
+                )
+              : content,
         ),
       ),
-      body: main == null
-          ? StateView(error: error, retry: load)
-          : RefreshIndicator(
-              onRefresh: load,
-              child: ListView(
-                controller: scroll,
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 40),
-                children: [
-                  if (error != null)
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(
-                        '$error',
-                        style: TextStyle(color: colors.semantic('bad')),
-                      ),
-                    ),
-                  for (var i = 0; i < blocks.length; i++)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 14),
-                      child: SiteReveal(index: i, child: blocks[i]),
-                    ),
-                ],
-              ),
-            ),
     );
   }
 }

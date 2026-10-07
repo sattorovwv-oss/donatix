@@ -52,14 +52,43 @@ object NotificationSession {
             String(cipher.doFinal(Base64.decode(raw, Base64.NO_WRAP)), Charsets.UTF_8)
         } catch (_: Exception) { null }
     }
+    private fun sessionIdentity(value: String?): String? {
+        if (value == null) return null
+        // Starlette refreshes the signed cookie timestamp on normal responses.
+        // The server-side sid stays constant until logout/new login. Comparing
+        // the entire cookie would repeatedly invalidate in-flight registration.
+        return try {
+            val payload = String(Base64.decode(value.substringBefore('.'), Base64.DEFAULT), Charsets.UTF_8)
+            JSONObject(payload).optString("sid").takeIf { it.isNotBlank() }?.let { "sid:$it" } ?: value
+        } catch (_: Exception) { value }
+    }
+    fun current(c: Context, uid: Int, expectedCookie: String): Boolean =
+        prefs(c).getInt("userId", 0) == uid && sessionIdentity(cookie(c)) == sessionIdentity(expectedCookie)
+    @Synchronized
+    fun registered(c: Context, uid: Int, expectedCookie: String, server: Boolean) {
+        if (current(c, uid, expectedCookie)) prefs(c).edit().putBoolean("push_registered", true).putBoolean("push_server", server).apply()
+    }
+    @Synchronized
+    fun watermark(c: Context, uid: Int, expectedCookie: String, value: Long) {
+        if (current(c, uid, expectedCookie)) prefs(c).edit().putLong("watermark", value).apply()
+    }
+    @Synchronized
     fun configure(c: Context, origin: String, cookie: String, userId: Int) {
         val uri = URL(origin)
-        require(uri.protocol == "https" && uri.host.isNotBlank() && uri.userInfo == null)
+        require(uri.protocol == "https" && uri.host.isNotBlank() && uri.userInfo == null &&
+            uri.query == null && uri.ref == null && (uri.path.isEmpty() || uri.path == "/") &&
+            userId > 0 && cookie.isNotBlank())
         val p = prefs(c)
-        if (p.getInt("userId", 0) != userId) p.edit().clear().apply()
+        val changed = p.getInt("userId", 0) != userId || p.getString("origin", null) != origin ||
+            sessionIdentity(cookie(c)) != sessionIdentity(cookie)
+        if (p.getInt("userId", 0) != userId) {
+            p.edit().clear().apply()
+            NotificationManagerCompat.from(c).cancelAll()
+        }
+        if (changed) p.edit().putBoolean("push_registered", false).putBoolean("push_server", false).apply()
         storeCookie(c, cookie)
         p.edit().putString("origin", origin).putInt("userId", userId).apply()
-        NativePush.register(c)
+        NativePush.register(c, replace = changed)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val work = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES).setConstraints(constraints).build()
         WorkManager.getInstance(c).enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, work)
@@ -70,12 +99,14 @@ object NotificationSession {
     fun show(c: Context, uid: Int, id: Long, title: String, body: String, link: String) {
         val p = prefs(c)
         if (p.getInt("userId", 0) != uid) return
+        if (!NotificationManagerCompat.from(c).areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val seen = (p.getStringSet("shown_ids", emptySet()) ?: emptySet()).toMutableSet()
         if (seen.contains(id.toString())) return
         if (Build.VERSION.SDK_INT >= 26) c.getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel("donatix-orders", "Заказы и баланс Donatix", NotificationManager.IMPORTANCE_DEFAULT))
-        val intent = Intent(c, MainActivity::class.java).putExtra("donatix_link", link)
+        val safeLink = if (link.startsWith("/panel/") && !link.startsWith("//") && !link.contains('\\')) link else "/panel/notifications"
+        val intent = Intent(c, MainActivity::class.java).putExtra("donatix_link", safeLink).putExtra("donatix_user", uid)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         val pending = PendingIntent.getActivity(c, id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val notification = NotificationCompat.Builder(c, "donatix-orders").setSmallIcon(R.drawable.ic_notification)
@@ -85,11 +116,14 @@ object NotificationSession {
         seen.add(id.toString())
         p.edit().putStringSet("shown_ids", seen.sortedByDescending { it.toLongOrNull() ?: 0 }.take(200).toSet()).apply()
     }
+    @Synchronized
     fun stop(c: Context) {
+        // Remove the session first: cancelled workers and pending FCM callbacks
+        // must not write registration state or display a signed-out account.
+        prefs(c).edit().clear().apply()
         NativePush.stop(c)
         WorkManager.getInstance(c).cancelUniqueWork(WORK)
         WorkManager.getInstance(c).cancelUniqueWork("donatix-inbox-seed")
-        prefs(c).edit().clear().apply()
         NotificationManagerCompat.from(c).cancelAll()
     }
 }
@@ -110,13 +144,13 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
             connection.setRequestProperty("Cookie", "dx_session=$session")
             connection.setRequestProperty("User-Agent", "DonatixNativeNotifications/1.0")
             if (connection.responseCode in listOf(401, 403)) {
-                if (p.getInt("userId", 0) == uid && NotificationSession.cookie(c) == session) NotificationSession.stop(c)
+                if (NotificationSession.current(c, uid, session)) NotificationSession.stop(c)
                 return Result.success()
             }
             if (connection.responseCode != 200) return Result.retry()
             val payload = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             if (payload.length > 1024 * 1024) return Result.failure()
-            if (p.getInt("userId", 0) != uid || NotificationSession.cookie(c) == null) return Result.success()
+            if (!NotificationSession.current(c, uid, session) || isStopped) return Result.success()
             val rows = JSONObject(payload).getJSONArray("items")
             val initialized = p.contains("watermark")
             val before = p.getLong("watermark", 0)
@@ -125,7 +159,7 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
                 NotificationChannel("donatix-orders", "Заказы и баланс Donatix", NotificationManager.IMPORTANCE_DEFAULT))
             val allowed = Build.VERSION.SDK_INT < 33 || ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             for (i in rows.length() - 1 downTo 0) {
-                if (isStopped || p.getInt("userId", 0) != uid) return Result.success()
+                if (isStopped || !NotificationSession.current(c, uid, session)) return Result.success()
                 val row = rows.getJSONObject(i)
                 val id = row.getLong("id")
                 latest = maxOf(latest, id)
@@ -133,7 +167,7 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
                 NotificationSession.show(c, uid, id, row.optString("title", "").ifBlank { "Donatix" },
                     row.optString("text", ""), row.optString("link", "/panel/notifications"))
             }
-            if (p.getInt("userId", 0) == uid) p.edit().putLong("watermark", latest).apply()
+            if (!isStopped) NotificationSession.watermark(c, uid, session, latest)
             Result.success()
         } catch (_: Exception) { Result.retry() }
         finally { connection?.disconnect() }

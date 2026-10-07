@@ -11,6 +11,9 @@ class NativeNotifications {
   static const channel = MethodChannel('tj.donatix.app/native');
   bool enabled = false;
   String? configured;
+  DateTime? lastConfiguration;
+  bool synchronizing = false;
+  bool synchronizeAgain = false;
   Map<String, dynamic> push = {};
   NativeNotifications(this.api);
   Future<void> refreshStatus() async {
@@ -24,15 +27,26 @@ class NativeNotifications {
     }
   }
 
-  Future<void> synchronize() async {
-    enabled =
-        (await SharedPreferences.getInstance()).getBool(
-          'background_notifications',
-        ) ??
-        false;
-    final signature = '$enabled|${api.userId}|${api.session}';
-    if (signature == configured) return;
+  Future<void> synchronize({bool force = false}) async {
+    if (synchronizing) {
+      synchronizeAgain = true;
+      return;
+    }
+    synchronizing = true;
     try {
+      enabled =
+          (await SharedPreferences.getInstance()).getBool(
+            'background_notifications',
+          ) ??
+          false;
+      final signature = '$enabled|${api.userId}|${api.session}';
+      if (signature == configured &&
+          (!force ||
+              (lastConfiguration != null &&
+                  DateTime.now().difference(lastConfiguration!) <
+                      const Duration(minutes: 1)))) {
+        return;
+      }
       if (enabled && api.userId != 0 && api.session != null) {
         await channel.invokeMethod<void>('configureNotifications', {
           'origin': DonatixApi.origin,
@@ -43,11 +57,18 @@ class NativeNotifications {
         await channel.invokeMethod<void>('stopNotifications');
       }
       configured = signature;
+      lastConfiguration = DateTime.now();
       await refreshStatus();
     } on MissingPluginException {
       /* Other targets keep the in-app inbox. */
     } on PlatformException {
       /* A background-worker failure must not fail a financial API response. */
+    } finally {
+      synchronizing = false;
+      if (synchronizeAgain) {
+        synchronizeAgain = false;
+        await synchronize(force: true);
+      }
     }
   }
 
@@ -86,6 +107,7 @@ class NativeNotifications {
 
   Future<void> stop() async {
     configured = null;
+    lastConfiguration = null;
     try {
       await channel.invokeMethod<void>('stopNotifications');
     } on MissingPluginException {
@@ -122,6 +144,11 @@ class _NotificationPreferencesState extends State<NotificationPreferences> {
     super.initState();
     statusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       await widget.service.refreshStatus();
+      if (widget.service.enabled &&
+          (widget.service.push['registered'] != true ||
+              widget.service.push['server'] != true)) {
+        await widget.service.synchronize(force: true);
+      }
       if (mounted) setState(() {});
     });
   }
@@ -137,11 +164,19 @@ class _NotificationPreferencesState extends State<NotificationPreferences> {
     contentPadding: EdgeInsets.zero,
     title: const Text('Уведомления о заказах и балансе'),
     subtitle: Text(
-      widget.service.push['server'] == true &&
-              widget.service.push['registered'] == true
+      !widget.service.enabled
+          ? 'Получать уведомления о заказах и изменениях баланса.'
+          : widget.service.push['permission'] == false && !Platform.isIOS
+          ? 'Уведомления выключены в настройках Android.'
+          : widget.service.push['server'] == true &&
+                widget.service.push['registered'] == true
           ? Platform.isIOS
                 ? 'Push через APNs/FCM подключён. Подробности доступны в приложении.'
-                : 'FCM подключён. Также включена резервная фоновая проверка.'
+                : 'Устройство зарегистрировано для push. Включена резервная фоновая проверка.'
+          : widget.service.push['registered'] == true &&
+                widget.service.push['server'] != true &&
+                !Platform.isIOS
+          ? 'На сервере ещё не включена отправка push. Уведомления проверяются периодически.'
           : widget.service.push['firebase'] == true
           ? Platform.isIOS
                 ? 'Подключение APNs/FCM. Без push список обновляется при открытии приложения.'

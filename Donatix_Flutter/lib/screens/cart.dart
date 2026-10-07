@@ -45,15 +45,28 @@ class _CartScreenState extends State<CartScreen> {
   }
 
   Future<void> buy() async {
-    if (!(form.currentState?.validate() ?? false) || counts.isEmpty) return;
+    if (busy || !(form.currentState?.validate() ?? false) || counts.isEmpty) {
+      return;
+    }
     if (widget.api.userId == 0) {
       widget.api.onSessionExpired?.call();
       return;
     }
+    final lease = widget.api.beginOrder();
+    if (lease == null) {
+      message(
+        context,
+        'Другая покупка уже оформляется. Дождитесь её результата.',
+      );
+      return;
+    }
+    final owner = widget.api.userId;
+    final pendingKey = widget.api.pendingOrderKey;
     setState(() => busy = true);
     try {
-      if (await widget.api.storage.read(key: widget.api.pendingOrderKey) !=
-          null) {
+      if (await widget.api.storage.read(key: pendingKey) != null) {
+        widget.api.requireAccount(owner);
+        widget.api.endOrder(lease);
         if (mounted) {
           await Navigator.push(
             context,
@@ -64,6 +77,7 @@ class _CartScreenState extends State<CartScreen> {
         }
         return;
       }
+      widget.api.requireAccount(owner);
       final body = <String, dynamic>{
         'items': [
           for (final e in counts.entries)
@@ -72,6 +86,7 @@ class _CartScreenState extends State<CartScreen> {
         'fields': {for (final e in fields.entries) e.key: e.value.text.trim()},
       };
       final quote = await widget.api.post('/api/v1/mobile/cart/quote', body);
+      widget.api.requireAccount(owner);
       body['items'] = quote['items'];
       if (!mounted ||
           !await confirmAction(
@@ -84,21 +99,26 @@ class _CartScreenState extends State<CartScreen> {
           )) {
         return;
       }
+      widget.api.requireAccount(owner);
       final key = operationId();
       await widget.api.storage.write(
-        key: widget.api.pendingOrderKey,
+        key: pendingKey,
         value: jsonEncode({
           'endpoint': '/api/v1/mobile/cart',
           'body': body,
           'key': key,
+          'title': 'Корзина',
         }),
       );
+      widget.api.requireAccount(owner);
       final d = await widget.api.post(
         '/api/v1/mobile/cart',
         body,
         idempotency: key,
       );
-      await widget.api.storage.delete(key: widget.api.pendingOrderKey);
+      await widget.api.storage.delete(key: pendingKey);
+      widget.api.requireAccount(owner);
+      widget.api.endOrder(lease);
       if (mounted) {
         message(
           context,
@@ -117,14 +137,11 @@ class _CartScreenState extends State<CartScreen> {
         );
       }
     } catch (e) {
-      if (e is ApiFailure &&
-          e.status != null &&
-          e.status! >= 400 &&
-          e.status! < 500) {
-        await widget.api.storage.delete(key: widget.api.pendingOrderKey);
-      }
+      // A replay can fail after some cart items were already charged. Keep its
+      // original idempotency key until the server confirms the complete result.
       if (mounted) message(context, e);
     } finally {
+      widget.api.endOrder(lease);
       if (mounted) setState(() => busy = false);
     }
   }

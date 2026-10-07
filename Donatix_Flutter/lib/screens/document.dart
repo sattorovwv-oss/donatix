@@ -9,6 +9,7 @@ import '../core/api.dart';
 import '../core/checkout.dart';
 import '../core/navigation.dart';
 import '../widgets/ui.dart';
+import '../widgets/site_design.dart';
 import 'management.dart';
 
 /// Legal text and server-controlled administration are rendered as Flutter
@@ -420,10 +421,9 @@ class _NativeFormState extends State<NativeForm> {
     super.initState();
     for (final e in widget.form.querySelectorAll('input,textarea,select')) {
       if (e.localName == 'select') {
-        values[e] =
-            e.querySelector('option[selected]')?.attributes['value'] ??
-            e.querySelector('option')?.attributes['value'] ??
-            '';
+        final option =
+            e.querySelector('option[selected]') ?? e.querySelector('option');
+        values[e] = option?.attributes['value'] ?? option?.text.trim() ?? '';
       } else if (['checkbox', 'radio'].contains(e.attributes['type'])) {
         if (e.attributes.containsKey('checked')) {
           values[e] = e.attributes['value'] ?? 'on';
@@ -470,18 +470,18 @@ class _NativeFormState extends State<NativeForm> {
   Future<void> submit(dom.Element button) async {
     if (busy || !(formKey.currentState?.validate() ?? false)) return;
     final method = (widget.form.attributes['method'] ?? 'get').toUpperCase();
-    if (method != 'GET' &&
-        !await confirmAction(
-          context,
-          button.text.trim().isEmpty
-              ? 'Сохранить изменения?'
-              : button.text.trim(),
-          'Действие будет выполнено на сервере Donatix.',
-        )) {
-      return;
-    }
     setState(() => busy = true);
     try {
+      if (method != 'GET' &&
+          !await confirmAction(
+            context,
+            button.text.trim().isEmpty
+                ? 'Сохранить изменения?'
+                : button.text.trim(),
+            'Действие будет выполнено на сервере Donatix.',
+          )) {
+        return;
+      }
       final entries = <MapEntry<String, String>>[];
       final fileEntries = <MapEntry<String, MultipartFile>>[];
       for (final e in widget.form.querySelectorAll('input,textarea,select')) {
@@ -562,8 +562,14 @@ class _NativeFormState extends State<NativeForm> {
 
   Widget node(dom.Node n) {
     if (n is! dom.Element) return widget.render(n);
-    if (['script', 'style', 'svg'].contains(n.localName)) {
+    if (n.attributes.containsKey('hidden') ||
+        ['script', 'style'].contains(n.localName)) {
       return const SizedBox.shrink();
+    }
+    if (n.localName == 'svg' ||
+        n.classes.contains('tile') ||
+        n.localName == 'img') {
+      return widget.render(n);
     }
     if (controllers.containsKey(n) ||
         values.containsKey(n) ||
@@ -635,6 +641,10 @@ class _NativeFormState extends State<NativeForm> {
             onChanged: disabled
                 ? null
                 : (v) => setState(() => values[n] = v ?? ''),
+            validator: (v) =>
+                n.attributes.containsKey('required') && (v ?? '').isEmpty
+                ? 'Выберите значение'
+                : null,
           ),
         );
       }
@@ -655,7 +665,9 @@ class _NativeFormState extends State<NativeForm> {
               : n.localName == 'textarea'
               ? 8
               : 1,
-          keyboardType: ['number', 'range'].contains(type)
+          keyboardType:
+              ['number', 'range'].contains(type) ||
+                  ['numeric', 'decimal'].contains(n.attributes['inputmode'])
               ? const TextInputType.numberWithOptions(
                   decimal: true,
                   signed: true,
@@ -669,6 +681,7 @@ class _NativeFormState extends State<NativeForm> {
             labelText: label(n),
             hintText: n.attributes['placeholder'],
           ),
+          maxLength: int.tryParse(n.attributes['maxlength'] ?? ''),
           validator: (v) =>
               n.attributes.containsKey('required') && (v ?? '').trim().isEmpty
               ? 'Заполните поле'
@@ -696,6 +709,58 @@ class _NativeFormState extends State<NativeForm> {
               child: CircularProgressIndicator(strokeWidth: 2),
             )
           : Text(n.text.trim().isEmpty ? 'Сохранить' : n.text.trim());
+      if (n.classes.contains('sync-btn')) {
+        final p = SiteColors(context);
+        return Opacity(
+          opacity: action == null ? .5 : 1,
+          child: Material(
+            color: n.classes.contains('main') ? p.accentSoft : p.surface,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: n.classes.contains('main') ? p.accent : p.line,
+              ),
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: action,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Row(
+                  children: [
+                    if (n.querySelector('.tile') case final dom.Element tile)
+                      widget.render(tile),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            n.querySelector('b')?.text.trim() ?? n.text.trim(),
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          if (n.querySelector('.sub')
+                              case final dom.Element sub)
+                            Text(
+                              sub.text.trim(),
+                              style: TextStyle(fontSize: 13.6, color: p.muted),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (busy)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
       final button =
           n.classes.contains('primary') || n.classes.contains('danger')
           ? FilledButton(
@@ -718,6 +783,10 @@ class _NativeFormState extends State<NativeForm> {
     }
     if (n.localName == 'label' && n.querySelector('input,select') == null) {
       return const SizedBox.shrink();
+    }
+    if (n.localName == 'label' &&
+        n.querySelector('input[type="checkbox"],input[type="radio"]') != null) {
+      return node(n.querySelector('input')!);
     }
     if (n.children.isEmpty ||
         ['a', 'h1', 'h2', 'h3', 'p', 'pre'].contains(n.localName)) {

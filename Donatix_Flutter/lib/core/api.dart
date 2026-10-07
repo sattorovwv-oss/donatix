@@ -30,6 +30,25 @@ class DonatixApi {
   String role = 'client';
   String status = '';
   String? nextLink;
+  Object? _activeOrder;
+  Object? beginOrder() {
+    if (_activeOrder != null) return null;
+    return _activeOrder = Object();
+  }
+
+  void endOrder(Object lease) {
+    if (identical(_activeOrder, lease)) _activeOrder = null;
+  }
+
+  void requireAccount(int expectedUserId) {
+    if (expectedUserId == 0 || userId != expectedUserId || session == null) {
+      throw const ApiFailure(
+        'Аккаунт изменился. Откройте покупку заново.',
+        401,
+      );
+    }
+  }
+
   Future<void> Function()? onSessionChanged;
   String displayCurrency = 'USD';
   String tjsRate = '1';
@@ -210,8 +229,15 @@ class DonatixApi {
         onSessionExpired?.call();
       }
       if (d is! Map || r.statusCode! >= 300 || d['ok'] == false) {
+        final missingModule =
+            r.statusCode == 404 &&
+            (path == '/api/v1/mobile-session' ||
+                path.startsWith('/api/v1/mobile/')) &&
+            (d is! Map || '${d['error'] ?? ''}'.toLowerCase() == 'not found');
         throw ApiFailure(
-          d is Map
+          missingModule
+              ? 'Мобильный API пока недоступен на сервере Donatix. После установки обновления нажмите «Повторить подключение».'
+              : d is Map
               ? '${d['error'] ?? d['detail'] ?? 'Запрос отклонён'}'
               : r.statusCode == 404
               ? 'На сервере не установлен мобильный модуль.'
@@ -220,7 +246,16 @@ class DonatixApi {
         );
       }
       return Map<String, dynamic>.from(d);
-    } on DioException {
+    } on DioException catch (e) {
+      if (e.response != null) {
+        final status = e.response!.statusCode;
+        throw ApiFailure(
+          status == 503
+              ? 'Сервис временно недоступен. Попробуйте позже.'
+              : 'Ошибка сервера. Если вы оформляли заказ, сначала проверьте его результат и историю.',
+          status,
+        );
+      }
       throw const ApiFailure(
         'Нет связи с сервером. Проверьте интернет. Если вы оформляли заказ, сначала проверьте его в истории.',
       );

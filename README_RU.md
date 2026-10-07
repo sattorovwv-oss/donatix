@@ -1,13 +1,13 @@
 # Donatix — Flutter и исходный сервер
 
-Версия приложения: 1.0.0+4, Android/iOS identifier `tj.donatix.app`. Сервер по умолчанию: `https://donatix.tj`.
+Версия приложения: 1.0.0+5, Android/iOS identifier `tj.donatix.app`. Сервер по умолчанию: `https://donatix.tj`.
 
 В этом комплекте приложение вызывает настоящие операции сервера из присланного проекта. Цена, баланс,
 выдача, возврат, курсы, комиссия и права пользователей рассчитываются сервером. Локальных фиктивных
 покупок и балансов в клиенте нет. Производственный запуск сервера запрещает MockSupplier.
 
 Это комплект исходников с выполненными проверками, **не уже собранный и принятый Play-релиз**.
-APK/AAB/IPA ещё не получены. iOS-настройки описаны в IOS_SETUP_RU.md. Границы проверки описаны в `RELEASE_STATUS.md`.
+Подписанные бинарники этой версии не входят в комплект. iOS-настройки описаны в IOS_SETUP_RU.md. Границы проверки описаны в `RELEASE_STATUS.md`.
 
 ## Состав
 
@@ -150,7 +150,20 @@ flutter build appbundle --release --dart-define=DONATIX_URL=https://ВАШ-ДО�
 использовать корневой `codemagic.yaml`; если только `Donatix_Flutter`, использовать файл внутри
 этой папки. Workflow `android-check` собирает APK для приёмки. Для `android-release` добавить
 keystore владельца с reference `donatix_upload`. Workflow не публикует приложение автоматически.
-Ни один из этих workflow ещё не запускался в данной сессии.
+Release workflow проверяет локальные настройки Firebase, подпись и HTTPS-адрес сервера,
+затем компилирует приложение. Доступность рабочего сервера не блокирует создание APK/AAB/IPA.
+Успешные подписанные артефакты пока не подтверждены.
+
+Работу сервера проверять отдельно перед передачей и публикацией. Из `Donatix_Flutter`:
+
+```bash
+DONATIX_URL=https://donatix.tj python3 tool/release_preflight.py --platform android --server-only
+DONATIX_URL=https://donatix.tj python3 tool/release_preflight.py --platform ios --server-only
+```
+
+Этот режим не требует локального keystore или Firebase-файлов. Он проверяет мобильный API
+версии 4 и для iOS с Google-входом — включённый Apple-вход. Ответ `Not Found` означает, что
+мобильное расширение нужно подключить на существующем сервере; компиляция APK этого не делает.
 
 ## Проверки перед передачей заказчику
 
@@ -188,6 +201,18 @@ keystore владельца с reference `donatix_upload`. Workflow не пуб�
 
 ## Android и iOS в 1.0.0+4
 
-Обе платформы включены в Donatix_Flutter. iOS: Xcode, камера/фото, файлы, Keychain, APNs/FCM, Google и Apple-вход с серверной проверкой и отзывом при удалении. Android-функции сохранены. Инструкция для обеих release-сборок — IOS_SETUP_RU.md. Для Google Play выбирайте android-release и app-release.aab; для App Store/TestFlight — ios-release.
+Обе платформы включены в Donatix_Flutter. iOS: Xcode, камера/фото, файлы, Keychain, APNs/FCM, Google и Apple-вход с серверной проверкой и отзывом при удалении. Android-функции сохранены. Инструкция для обеих release-сборок — IOS_SETUP_RU.md. Для Google Play выбирайте android-release и Donatix-release.aab; для App Store/TestFlight — ios-release.
 
 Новый Android upload keystore передаётся отдельным приватным архивом Donatix_Signing_Key.zip. Не отправляйте его в GitHub. Для уже опубликованного приложения используйте ожидаемый Google Play ключ владельца.
+
+## Android-обновление 1.0.0+5
+
+Инструкция применения отдельного клиентского архива — ANDROID_UPDATE_RU.md.
+Server, server_patch и исходные файлы iOS не менялись. Общие Flutter-экраны
+исправлены; iOS-приложение отдельно в этом обновлении не проверялось.
+
+В android-release добавлены проверки UI/покупок и сборочных артефактов.
+Результат Codemagic: Donatix-release.apk (установка на Android),
+Donatix-release.aab (Google Play) и release-verification.json (проверки подписи
+и библиотек). Бинарники этой версии ещё нужно собрать и принять на телефоне.
+Фактический объём выполненных проверок — RELEASE_STATUS.md.

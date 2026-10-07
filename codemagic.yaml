@@ -47,18 +47,28 @@ workflows:
 
         python3 tool/release_preflight.py --platform android'
     - *id002
+    - name: Android regressions
+      script: 'set -euo pipefail
+
+        python3 -m unittest discover -s tool -p "test_*.py"
+
+        flutter test'
     - name: Signed APK
       script: 'set -euo pipefail
 
-        flutter build apk --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 4 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
+        flutter build apk --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 5 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
     - name: Google Play AAB
       script: 'set -euo pipefail
 
-        flutter build appbundle --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 4 ))}"
-        --dart-define=DONATIX_URL="$DONATIX_URL"'
+        flutter build appbundle --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 5 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
+    - name: Verify signatures, 16 KB libraries and collect release files
+      script: 'set -euo pipefail
+
+        python3 tool/collect_android_release.py'
     artifacts:
-    - $CM_BUILD_DIR/**/outputs/flutter-apk/app-release.apk
-    - $CM_BUILD_DIR/**/outputs/bundle/release/*.aab
+    - $CM_BUILD_DIR/donatix-release/Donatix-release.apk
+    - $CM_BUILD_DIR/donatix-release/Donatix-release.aab
+    - $CM_BUILD_DIR/donatix-release/release-verification.json
     working_directory: Donatix_Flutter
   ios-check:
     name: Donatix iOS simulator build and native checks
@@ -90,8 +100,7 @@ workflows:
 
         devices = json.loads(subprocess.check_output([''xcrun'',''simctl'',''list'',''devices'',''available'',''--json'']))[''devices'']
 
-        udid = next(d[''udid''] for runtime, group in devices.items() if ''iOS'' in runtime for d in group if d.get(''isAvailable'')
-        and d[''name''].startswith(''iPhone''))
+        udid = next(d[''udid''] for runtime, group in devices.items() if ''iOS'' in runtime for d in group if d.get(''isAvailable'') and d[''name''].startswith(''iPhone''))
 
         subprocess.run([''xcrun'',''simctl'',''boot'',udid], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 

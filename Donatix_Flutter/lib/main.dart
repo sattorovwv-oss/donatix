@@ -128,7 +128,10 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) openNotification();
+    if (state == AppLifecycleState.resumed) {
+      notifications.synchronize(force: true);
+      openNotification();
+    }
   }
 
   Future<void> openNotification() async {

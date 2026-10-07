@@ -1,6 +1,7 @@
 package tj.donatix.app
 
 import android.content.Context
+import androidx.core.app.NotificationManagerCompat
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
@@ -10,6 +11,7 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 object NativePush {
     private const val WORK = "donatix-fcm-register"
@@ -20,20 +22,32 @@ object NativePush {
         p.edit().putString("push_device", id).apply()
         return id
     }
-    fun register(c: Context) {
+    fun register(c: Context, replace: Boolean = false) {
         if (!configured(c) || NotificationSession.prefs(c).getInt("userId", 0) == 0) return
+        val prefs = NotificationSession.prefs(c)
+        if (!replace && prefs.getBoolean("push_registered", false) && prefs.getBoolean("push_server", false)) return
+        FirebaseMessaging.getInstance().isAutoInitEnabled = true
         val request = OneTimeWorkRequestBuilder<PushRegistrationWorker>()
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()).build()
-        WorkManager.getInstance(c).enqueueUniqueWork(WORK, ExistingWorkPolicy.REPLACE, request)
+        WorkManager.getInstance(c).enqueueUniqueWork(WORK,
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP, request)
     }
     fun stop(c: Context) {
         WorkManager.getInstance(c).cancelUniqueWork(WORK)
-        if (configured(c)) FirebaseMessaging.getInstance().deleteToken()
+        if (configured(c)) {
+            FirebaseMessaging.getInstance().isAutoInitEnabled = false
+            FirebaseMessaging.getInstance().deleteToken().addOnCompleteListener {
+                // Logout/login may finish while token deletion is still running.
+                if (NotificationSession.prefs(c).getInt("userId", 0) != 0) register(c, replace = true)
+            }
+        }
     }
     fun status(c: Context): Map<String, Any> = mapOf(
         "firebase" to configured(c),
         "registered" to NotificationSession.prefs(c).getBoolean("push_registered", false),
         "server" to NotificationSession.prefs(c).getBoolean("push_server", false),
+        "permission" to NotificationManagerCompat.from(c).areNotificationsEnabled(),
         "deviceId" to deviceId(c)
     )
 }
@@ -69,18 +83,20 @@ class PushRegistrationWorker(c: Context, params: WorkerParameters) : Worker(c, p
                 30, java.util.concurrent.TimeUnit.SECONDS)
             val session = exchange(origin, cookie, null, null)
             if (session.getInt("user_id") != uid || p.getInt("userId", 0) != uid || isStopped) return Result.success()
+            if (!NotificationSession.current(c, uid, cookie)) return Result.retry()
             val reply = exchange(origin, cookie, session.getString("csrf"), JSONObject()
                 .put("device_id", NativePush.deviceId(c)).put("token", token).put("platform", "android"))
-            if (p.getInt("userId", 0) == uid && NotificationSession.cookie(c) != null && !isStopped) {
-                p.edit().putBoolean("push_registered", true).putBoolean("push_server", reply.optBoolean("configured")).apply()
+            if (NotificationSession.current(c, uid, cookie) && !isStopped) {
+                NotificationSession.registered(c, uid, cookie, reply.optBoolean("configured"))
             }
-            Result.success()
+            if (p.getInt("userId", 0) == uid && !NotificationSession.current(c, uid, cookie) && !isStopped) Result.retry()
+            else Result.success()
         } catch (_: Exception) { if (runAttemptCount >= 5) Result.failure() else Result.retry() }
     }
 }
 
 class DonatixMessagingService : FirebaseMessagingService() {
-    override fun onNewToken(token: String) { NativePush.register(this) }
+    override fun onNewToken(token: String) { NativePush.register(this, replace = true) }
     override fun onMessageReceived(message: RemoteMessage) {
         val p = NotificationSession.prefs(this)
         val owner = message.data["user_id"]?.toIntOrNull() ?: return

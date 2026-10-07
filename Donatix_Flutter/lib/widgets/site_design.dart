@@ -12,18 +12,20 @@ class SiteColors {
   Color get line => Color(dark ? 0xff262b37 : 0xffe7e9f0);
   Color get accent => Color(dark ? 0xff8b8cf8 : 0xff4f46e5);
   Color get accentSoft => Color(dark ? 0xff1e2040 : 0xffeef0ff);
+  Color get accentLine => Color(dark ? 0xff34376c : 0xffcdd1fb);
   Color semantic(String kind) => switch (kind) {
-    'ok' ||
-    'good' ||
-    'plus' ||
-    'c-done' => Color(dark ? 0xff4ade80 : 0xff157347),
+    'c-created' => Color(dark ? 0xff9b87ff : 0xff6d4aff),
+    'c-done' => Color(dark ? 0xff4ade80 : 0xff16a34a),
+    'c-ref' => Color(dark ? 0xffff6b6f : 0xffe5484d),
+    'ok' || 'good' || 'plus' => Color(dark ? 0xff4ade80 : 0xff157347),
     'bad' ||
     'error' ||
     'danger' ||
-    'minus' ||
-    'c-ref' => Color(dark ? 0xfff87171 : 0xffc42b2b),
+    'minus' => Color(dark ? 0xfff87171 : 0xffc42b2b),
     'warn' => Color(dark ? 0xfff5b942 : 0xff975a00),
     'g2' => Color(dark ? 0xff5cb3f0 : 0xff2481cc),
+    'g3' => Color(dark ? 0xffaab8c8 : 0xff1b2838),
+    'g4' => Color(dark ? 0xffe879f9 : 0xffa21caf),
     'g5' => Color(dark ? 0xfffb923c : 0xffc2410c),
     _ => accent,
   };
@@ -35,6 +37,8 @@ class SiteColors {
     'minus' => Color(dark ? 0xff2b1616 : 0xfffdeeee),
     'warn' => Color(dark ? 0xff2a2110 : 0xfffdf5e5),
     'g2' => Color(dark ? 0xff13253a : 0xffe7f2fb),
+    'g3' => Color(dark ? 0xff1c232d : 0xffeaedf2),
+    'g4' => Color(dark ? 0xff2a1530 : 0xfffaecfb),
     'g5' => Color(dark ? 0xff2c1a0e : 0xfffdf1e9),
     _ => accentSoft,
   };
@@ -104,10 +108,9 @@ class _SiteRevealState extends State<SiteReveal>
 
   @override
   Widget build(BuildContext context) {
-    final start = (widget.index.clamp(0, 4) * .08).toDouble();
-    final curve = CurvedAnimation(
-      parent: controller,
-      curve: Interval(start, 1, curve: siteEase),
+    final start = (widget.index.clamp(0, 4) * .06 / .5).toDouble();
+    final curve = controller.drive(
+      CurveTween(curve: Interval(start, 1, curve: siteEase)),
     );
     return AnimatedBuilder(
       animation: curve,
@@ -158,6 +161,106 @@ class SiteGrid extends StatelessWidget {
         ],
       );
     },
+  );
+}
+
+class SiteShine extends StatelessWidget {
+  final Widget child;
+  final Animation<double> clock;
+  const SiteShine({super.key, required this.child, required this.clock});
+  @override
+  Widget build(BuildContext context) => ClipRRect(
+    borderRadius: BorderRadius.circular(20),
+    child: Stack(
+      children: [
+        child,
+        if (!MediaQuery.disableAnimationsOf(context))
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedBuilder(
+                animation: clock,
+                builder: (c, _) => LayoutBuilder(
+                  builder: (c, b) => Transform.translate(
+                    offset: Offset(
+                      b.maxWidth *
+                          (-1.2 +
+                              2.4 *
+                                  Curves.easeInOut.transform(
+                                    ((clock.value - .7) / .3).clamp(0, 1),
+                                  )),
+                      0,
+                    ),
+                    child: const DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment(-1, -.3),
+                          end: Alignment(1, .3),
+                          colors: [
+                            Colors.transparent,
+                            Color(0x1affffff),
+                            Colors.transparent,
+                          ],
+                          stops: [.35, .5, .65],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+}
+
+class SitePulseDot extends StatefulWidget {
+  final Color color;
+  const SitePulseDot({super.key, required this.color});
+  @override
+  State<SitePulseDot> createState() => _SitePulseDotState();
+}
+
+class _SitePulseDotState extends State<SitePulseDot>
+    with SingleTickerProviderStateMixin {
+  late final clock = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 2),
+  );
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      clock.stop();
+      clock.value = 0;
+    } else if (!clock.isAnimating) {
+      clock.repeat();
+    }
+  }
+
+  @override
+  void dispose() {
+    clock.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: clock,
+    builder: (c, _) => Container(
+      width: 9,
+      height: 9,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: widget.color,
+        boxShadow: [
+          BoxShadow(
+            color: widget.color.withValues(alpha: .5 * (1 - clock.value)),
+            spreadRadius: 8 * clock.value,
+          ),
+        ],
+      ),
+    ),
   );
 }
 

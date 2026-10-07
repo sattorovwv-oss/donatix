@@ -1,0 +1,78 @@
+[
+  {
+    "route": "/admin",
+    "file": "admin.html"
+  },
+  {
+    "route": "/admin/money",
+    "file": "admin_money.html"
+  },
+  {
+    "route": "/admin/finance",
+    "file": "admin_finance.html"
+  },
+  {
+    "route": "/admin/stats",
+    "file": "admin_stats.html"
+  },
+  {
+    "route": "/admin/traffic",
+    "file": "admin_traffic.html"
+  },
+  {
+    "route": "/admin/pricelist",
+    "file": "admin_pricelist.html"
+  },
+  {
+    "route": "/admin/orders",
+    "file": "admin_orders.html"
+  },
+  {
+    "route": "/admin/payments",
+    "file": "admin_payments.html"
+  },
+  {
+    "route": "/admin/pay-settings",
+    "file": "admin_pay-settings.html"
+  },
+  {
+    "route": "/admin/errors",
+    "file": "admin_errors.html"
+  },
+  {
+    "route": "/admin/users",
+    "file": "admin_users.html"
+  },
+  {
+    "route": "/admin/users?status=pending",
+    "file": "admin_users_status_pending.html"
+  },
+  {
+    "route": "/admin/products",
+    "file": "admin_products.html"
+  },
+  {
+    "route": "/admin/catalog-sync",
+    "file": "admin_catalog-sync.html"
+  },
+  {
+    "route": "/admin/shopbot",
+    "file": "admin_shopbot.html"
+  },
+  {
+    "route": "/admin/bots",
+    "file": "admin_bots.html"
+  },
+  {
+    "route": "/admin/account-deletions",
+    "file": "admin_account-deletions.html"
+  },
+  {
+    "route": "/admin/settings",
+    "file": "admin_settings.html"
+  },
+  {
+    "route": "/admin/users/2",
+    "file": "admin_users_2.html"
+  }
+]

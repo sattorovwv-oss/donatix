@@ -1,7 +1,7 @@
 {
-  "date": "2026-10-06",
-  "app_version": "1.0.0+4",
-  "dart": "3.9.0",
+  "date": "2026-10-07",
+  "app_version": "1.0.0+5",
+  "dart": "3.9.2",
   "flutter_source": "3.35.4",
   "dart_analysis": "No issues found",
   "dart_files": 26,
@@ -76,5 +76,29 @@
     "rollback",
     "unknown_revision_rejected",
     "db_and_env_preserved"
-  ]
+  ],
+  "android_flutter_regression_tests": 51,
+  "python_release_regression_tests": 24,
+  "android_ui_runtime": "official headless Flutter engine; no physical Android device",
+  "admin_fixture_pages_tested": 18,
+  "admin_widths_px": [
+    360,
+    1024
+  ],
+  "admin_dark_large_text_pages_tested": 6,
+  "android_kotlin_files_syntax_parsed": 3,
+  "server_patch_changed_in_android_update": false,
+  "server_preserved_files": 650,
+  "ios_preserved_files": 48,
+  "android_release_collector_implemented": true,
+  "android_release_collector_actual_binaries_verified": false,
+  "current_android_apk_built": false,
+  "current_android_aab_built": false,
+  "historical_user_reported_codemagic_build": {
+    "commit": "9862863",
+    "result": "success reported; binaries not inspected here"
+  },
+  "server_installer_requires_new_folder": false,
+  "android_update_includes_server_files": false,
+  "ios_workflows_changed_in_android_update": false
 }

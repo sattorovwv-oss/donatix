@@ -1,4 +1,5 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -510,25 +511,52 @@ class _ReferralBanner extends StatefulWidget {
 }
 
 class _ReferralBannerState extends State<_ReferralBanner>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late final clock = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 3200),
   );
+  late final shine = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 6),
+  );
+  late final twinkle = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2400),
+  );
+  late final pulse = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  );
+  Timer? shineDelay;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (MediaQuery.disableAnimationsOf(context)) {
-      clock.stop();
-      clock.value = 0;
+      for (final c in [clock, shine, twinkle, pulse]) {
+        c.stop();
+        c.value = 0;
+      }
+      shineDelay?.cancel();
+      shineDelay = null;
     } else if (!clock.isAnimating) {
       clock.repeat();
+      twinkle.repeat();
+      pulse.repeat();
+      shineDelay ??= Timer(const Duration(milliseconds: 1200), () {
+        if (mounted && !MediaQuery.disableAnimationsOf(context)) {
+          shine.repeat();
+        }
+      });
     }
   }
 
   @override
   void dispose() {
-    clock.dispose();
+    shineDelay?.cancel();
+    for (final c in [clock, shine, twinkle, pulse]) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -539,145 +567,220 @@ class _ReferralBannerState extends State<_ReferralBanner>
       padding: const EdgeInsets.symmetric(vertical: 18),
       child: SitePress(
         onTap: widget.onTap,
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Color.lerp(p.line, p.accent, .35)!),
-            gradient: RadialGradient(
-              center: Alignment.topLeft,
-              radius: 1.5,
-              colors: [Color.lerp(p.surface, p.accent, .22)!, p.surface],
+        child: SiteShine(
+          clock: shine,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: Color.lerp(p.line, p.accent, .35)!),
+              gradient: RadialGradient(
+                center: Alignment.topLeft,
+                radius: 1.5,
+                colors: [Color.lerp(p.surface, p.accent, .22)!, p.surface],
+              ),
             ),
-          ),
-          child: Column(
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 56,
-                    height: 56,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [p.accent, const Color(0xffa855f7)],
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        gradient: LinearGradient(
+                          colors: [p.accent, const Color(0xffa855f7)],
+                        ),
+                      ),
+                      child: AnimatedBuilder(
+                        animation: clock,
+                        child: AnimatedBuilder(
+                          animation: twinkle,
+                          builder: (c, _) => CustomPaint(
+                            foregroundPainter: _GiftSparkPainter(
+                              twinkle.value,
+                              MediaQuery.disableAnimationsOf(context),
+                            ),
+                            child: SvgPicture.asset(
+                              'assets/ref-gift-base.svg',
+                              width: 38,
+                              height: 38,
+                            ),
+                          ),
+                        ),
+                        builder: (c, child) {
+                          final t = clock.value;
+                          final bob = t < .3
+                              ? t / .3
+                              : t < .6
+                              ? 1 - (t - .3) / .3
+                              : t < .8
+                              ? (t - .6) / .2 / 3
+                              : (1 - t) / .2 / 3;
+                          final angle = t < .6 ? -.087 * bob : .07 * bob;
+                          return Transform.translate(
+                            offset: Offset(0, -3 * bob),
+                            child: Transform.rotate(angle: angle, child: child),
+                          );
+                        },
                       ),
                     ),
-                    child: AnimatedBuilder(
-                      animation: clock,
-                      child: SvgPicture.asset(
-                        'assets/ref-gift.svg',
-                        width: 38,
-                        height: 38,
-                      ),
-                      builder: (c, child) {
-                        final t = clock.value;
-                        final bob = t < .3
-                            ? t / .3
-                            : t < .6
-                            ? 1 - (t - .3) / .3
-                            : t < .8
-                            ? (t - .6) / .2 / 3
-                            : (1 - t) / .2 / 3;
-                        final angle = t < .6 ? -.087 * bob : .07 * bob;
-                        return Transform.translate(
-                          offset: Offset(0, -3 * bob),
-                          child: Transform.rotate(angle: angle, child: child),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Wrap(
-                          spacing: 8,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: const Color(0xfffcd34d),
-                                borderRadius: BorderRadius.circular(999),
-                              ),
-                              child: const Text(
-                                'НАВ',
-                                style: TextStyle(
-                                  color: Color(0xff3a2606),
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w800,
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Wrap(
+                            spacing: 8,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              AnimatedBuilder(
+                                animation: pulse,
+                                builder: (c, _) => Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xfffcd34d),
+                                    borderRadius: BorderRadius.circular(999),
+                                    boxShadow:
+                                        MediaQuery.disableAnimationsOf(context)
+                                        ? []
+                                        : [
+                                            BoxShadow(
+                                              color: const Color(0xfff59e0b)
+                                                  .withValues(
+                                                    alpha:
+                                                        .45 *
+                                                        (1 -
+                                                            _glow(pulse.value)),
+                                                  ),
+                                              spreadRadius:
+                                                  6 * _glow(pulse.value),
+                                            ),
+                                          ],
+                                  ),
+                                  child: const Text(
+                                    'НАВ',
+                                    style: TextStyle(
+                                      color: Color(0xff3a2606),
+                                      fontSize: 10.5,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
                                 ),
                               ),
-                            ),
-                            Text(
-                              'БАРНОМАИ РЕФЕРАЛӢ',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: p.muted,
-                                fontWeight: FontWeight.w600,
+                              Text(
+                                'БАРНОМАИ РЕФЕРАЛӢ',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: p.muted,
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Дӯстонро даъват кунед — бонус гиред',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              height: 1.3,
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Дӯстонро даъват кунед — бонус гиред',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            height: 1.3,
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Аз ҳар фармоиши онҳо бонус — то абад, рост ба ҳисобатон',
-                          style: TextStyle(
-                            fontSize: 14,
-                            height: 1.45,
-                            color: p.muted,
+                          const SizedBox(height: 4),
+                          Text(
+                            'Аз ҳар фармоиши онҳо бонус — то абад, рост ба ҳисобатон',
+                            style: TextStyle(
+                              fontSize: 14,
+                              height: 1.45,
+                              color: p.muted,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  width: double.infinity,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 13,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    gradient: LinearGradient(
+                      colors: [p.accent, const Color(0xffa855f7)],
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Container(
-                width: double.infinity,
-                alignment: Alignment.center,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 13,
-                ),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  gradient: LinearGradient(
-                    colors: [p.accent, const Color(0xffa855f7)],
+                  child: const Text(
+                    'Ҳавола гирифтан →',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
-                child: const Text(
-                  'Ҳавола гирифтан →',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+double _glow(double value) =>
+    Curves.easeInOut.transform(value <= .6 ? value / .6 : (1 - value) / .4);
+
+class _GiftSparkPainter extends CustomPainter {
+  final double time;
+  final bool reduced;
+  _GiftSparkPainter(this.time, this.reduced);
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.scale(size.width / 48, size.height / 48);
+    for (var i = 0; i < 2; i++) {
+      final phase = (time + i * .5) % 1;
+      final value = reduced
+          ? 1.0
+          : Curves.easeInOut.transform(
+              phase <= .5 ? phase * 2 : (1 - phase) * 2,
+            );
+      canvas.save();
+      canvas.translate(i == 0 ? 39 : 8, i == 0 ? 9 : 11);
+      canvas.scale(.5 + .5 * value);
+      final r = i == 0 ? 4.0 : 3.0, inner = i == 0 ? 1.1 : .8;
+      final path = Path()
+        ..moveTo(0, -r)
+        ..lineTo(inner, -inner)
+        ..lineTo(r, 0)
+        ..lineTo(inner, inner)
+        ..lineTo(0, r)
+        ..lineTo(-inner, inner)
+        ..lineTo(-r, 0)
+        ..lineTo(-inner, -inner)
+        ..close();
+      canvas.drawPath(
+        path,
+        Paint()..color = Colors.white.withValues(alpha: .2 + .8 * value),
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GiftSparkPainter oldDelegate) =>
+      time != oldDelegate.time || reduced != oldDelegate.reduced;
 }
 
 class _HomeTimezone extends StatefulWidget {

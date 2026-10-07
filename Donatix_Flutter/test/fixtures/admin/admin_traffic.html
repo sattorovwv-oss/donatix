@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Посещаемость — админка</title>
+  <meta name="description" content="Donatix — оптовые Telegram Stars, Telegram Premium, пополнения игр (Free Fire, PUBG, Mobile Legends) и Steam для магазинов и ботов. API, автоматическая выдача за секунды.">
+  <meta name="robots" content="noindex, nofollow">
+  
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Donatix">
+  <meta property="og:locale" content="ru_RU">
+  <meta property="og:title" content="Посещаемость — админка">
+  <meta property="og:description" content="Donatix — оптовые Telegram Stars, Telegram Premium, пополнения игр (Free Fire, PUBG, Mobile Legends) и Steam для магазинов и ботов. API, автоматическая выдача за секунды.">
+  <meta property="og:url" content="https://donatix.tj/admin/traffic">
+  <meta property="og:image" content="https://donatix.tj/static/og.png?v=7beb259e24">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Посещаемость — админка">
+  <meta name="twitter:description" content="Donatix — оптовые Telegram Stars, Telegram Premium, пополнения игр (Free Fire, PUBG, Mobile Legends) и Steam для магазинов и ботов. API, автоматическая выдача за секунды.">
+  <meta name="twitter:image" content="https://donatix.tj/static/og.png?v=7beb259e24">
+  
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("dx-theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+      document.documentElement.classList.add("js");
+    })();
+    // Часовой пояс устройства → cookie: сервер показывает время так, как у человека на часах.
+    // Если выбран «автоматически» и пояс поменялся (поездка, другой телефон) — один раз обновляем страницу.
+    (function () {
+      try {
+        var z = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (!z) return;
+        var had = document.cookie.match(/(?:^|; )dx_tz=([^;]*)/);
+        if (had && decodeURIComponent(had[1]) === z) return;
+        document.cookie = "dx_tz=" + encodeURIComponent(z) + "; path=/; max-age=31536000; samesite=lax";
+        if ("auto" === "auto" && "Asia/Dushanbe" !== z && !sessionStorage.getItem("dx-tz-r")) {
+          sessionStorage.setItem("dx-tz-r", "1");
+          location.reload();
+        }
+      } catch (e) {}
+    })();
+    // Валюта показа: USD или TJS по курсу оплат. Внутри всё в долларах — это только вывод.
+    window.DX_CUR = {code: "USD", rate: 0};
+    window.dxMoney = function (usd, digits) {
+      var c = window.DX_CUR;
+      if (c.code !== "TJS" || !c.rate) return "$" + usd.toFixed(digits || 4);
+      var t = usd * c.rate, d = (t > 0 && t < 1) ? 4 : 2, k = Math.pow(10, d);
+      return (Math.round(t * k + 1e-9) / k).toFixed(d) + " с.";
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Шрифты не держат показ страницы: пока грузятся (медленный мобильный интернет), текст — системным шрифтом -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="/static/donatix.css?v=7beb259e24">
+  <link rel="icon" href="/static/logo.svg?v=7beb259e24" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/app/icon-192.png?v=7beb259e24">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- Быстрые переходы: Chrome начинает грузить страницу в момент касания ссылки, а не после.
+       Не трогаем страницы, которые что-то меняют при открытии (уведомления, новый API-ключ, вход, выход). -->
+  <script type="speculationrules">
+  {"prefetch": [{"where": {"and": [{"href_matches": "/*"},
+      {"not": {"href_matches": ["/logout", "/auth/*", "/api/*", "/currency/*", "/admin*", "/panel/notifications*",
+                                "/panel/api*", "/login*", "/register*"]}}]},
+    "eagerness": "conservative"}]}
+  </script>
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Donatix">
+  <script>
+    // Сайт открыт как приложение (APK, «на экран домой» или ?source=app) — включаем режим приложения:
+    // нижнее меню, без рекламных блоков; во встроенном WebView прячем вход через Google (Google его там запрещает).
+    (function () {
+      var d = document.documentElement, ua = navigator.userAgent || "", q = /[?&]source=app\b/.test(location.search);
+      var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+      var saved = null; try { if (q) localStorage.setItem("dx-app", "1"); saved = localStorage.getItem("dx-app"); } catch (e) {}
+      if (q || standalone || saved === "1" || /DonatixApp/i.test(ua)) d.classList.add("is-app");
+      if (/; wv\)|DonatixApp/i.test(ua)) d.classList.add("is-webview");
+      // Мобильный вид как в приложении (нижнее меню и т.д.) — в приложении и на сайте с телефона
+      if (d.classList.contains("is-app") || (window.matchMedia && matchMedia("(max-width: 900px)").matches)) d.classList.add("app-ui");
+      // Заставка — при первом открытии (в приложении и на сайте), не на каждой странице; поисковым роботам — нет
+      var seen = null; try { seen = sessionStorage.getItem("dx-splash"); } catch (e) {}
+      if (!seen && !/bot|crawl|spider|lighthouse|headless|preview/i.test(ua)) d.classList.add("splash-on");
+    })();
+  </script>
+</head>
+<body>
+<div class="splash" id="splash" aria-hidden="true">
+  <div class="splash-logo">
+    <span class="splash-ring"></span>
+    <svg viewBox="0 0 32 32" width="96" height="96"><rect width="32" height="32" rx="8" fill="#4338ca"/>
+      <path class="splash-d" d="M10 8.5h6a7.5 7.5 0 0 1 0 15h-6Z" fill="none" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/></svg>
+  </div>
+  <div class="splash-name">Donatix</div>
+  <div class="splash-tag">💎 Алмазы · UC · ⭐ Stars · Steam<br><span>пополнение за секунды</span></div>
+  <div class="splash-bar"><i></i></div>
+</div>
+<div class="nav-progress" id="nav-progress" aria-hidden="true"></div>
+
+<header class="top">
+  <div class="bar">
+    <button class="icon-btn only-sm" type="button" aria-label="Открыть меню" onclick="dxMenu(true)"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg></button>
+    <a class="brand" href="/"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M10 8.5h6a7.5 7.5 0 0 1 0 15h-6Z" fill="none" stroke="var(--accent-ink)" stroke-width="2.6" stroke-linejoin="round"/></svg><span class="hide-sm">Donatix</span></a>
+    <nav class="nav">
+      
+      <span class="hide-sm hide-app muted small" style="margin-right:6px">admin</span>
+      <a class="icon-btn bell" href="/panel/notifications" aria-label="Уведомления"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></a>
+      <span class="cur-switch" role="group" aria-label="Валюта">
+        <a href="/currency/USD" class="on">USD</a><a href="/currency/TJS" class="">TJS</a>
+      </span>
+      <button class="icon-btn theme-toggle" type="button" aria-label="Сменить тему" onclick="dxTheme()"><svg class="ico moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><svg class="ico sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.9 4.9 1.4 1.4"/><path d="m17.7 17.7 1.4 1.4"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.3 17.7-1.4 1.4"/><path d="m19.1 4.9-1.4 1.4"/></svg></button>
+      <form class="inline hide-app" method="post" action="/logout">
+        <input type="hidden" name="csrf" value="fixture-csrf">
+        <button class="icon-btn" aria-label="Выйти" title="Выйти"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg></button>
+      </form>
+      
+    </nav>
+  </div>
+</header>
+
+
+
+<div class="shell">
+  <aside class="side" id="side">
+    <div class="drawer-head">
+      <a class="brand" href="/"><svg class="logo" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="var(--accent)"/><path d="M10 8.5h6a7.5 7.5 0 0 1 0 15h-6Z" fill="none" stroke="var(--accent-ink)" stroke-width="2.6" stroke-linejoin="round"/></svg>Donatix</a>
+      <button class="icon-btn" type="button" aria-label="Закрыть меню" onclick="dxMenu(false)"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    <div class="side-scroll">
+      
+      <nav aria-label="Разделы">
+
+<h4>Админка</h4>
+<a class="nav-item " href="/admin"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg><span>Сводка</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/money"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg><span>Учёт денег</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/finance"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 12h-5a2 2 0 0 0 0 4h5v-4Z"/><path d="M3 7h16a2 2 0 0 1 2 2v3"/></svg><span>Деньги за сутки</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/stats"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 6-6"/></svg><span>Аналитика продаж</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item on" href="/admin/traffic" aria-current="page"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><span>Посещаемость</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/pricelist"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13"/><path d="M19 12v7a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-7"/><path d="M7.5 8a2.5 2.5 0 0 1 0-5C11 3 12 8 12 8s1-5 4.5-5a2.5 2.5 0 0 1 0 5"/></svg><span>Прайс-лист картинкой</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/orders"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span>Заказы</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/payments"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-3"/><path d="M21 12h-5a2 2 0 0 0 0 4h5v-4Z"/><path d="M3 7h16a2 2 0 0 1 2 2v3"/></svg><span>Пополнения</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/pay-settings"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/><path d="M6 15h4"/></svg><span>Реквизиты</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/errors"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span>Ошибки</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/users"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9"/><path d="M16 3.1a4 4 0 0 1 0 7.8"/></svg><span>Клиенты</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/users?status=pending"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a2 2 0 0 0-2.8 0l-.9.9a2 2 0 0 1-2.8 0 1 1 0 0 1 0-1.4L12 5.2a3 3 0 0 1 4.2 0L22 11"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg><span>Заявки</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/products"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Каталог</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/catalog-sync"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M8 16H3v5"/></svg><span>Загрузка каталога</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/shopbot"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>Бот-магазин</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/bots"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg><span>Конструктор ботов</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/account-deletions"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>Удаление данных</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/admin/settings"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg><span>Настройки</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<h4>Сайт</h4>
+<a class="nav-item " href="/panel"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg><span>Панель клиента</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+<a class="nav-item " href="/"><svg class="ico " width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg><span>Главная страница</span><svg class="ico chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></a>
+</nav>
+      <button class="nav-item install-app" type="button" data-install style="width:100%;border:0;background:none;font:inherit;cursor:pointer;gap:10px;align-items:center">📲 <span>Установить приложение</span></button>
+      
+      <form class="side-logout" method="post" action="/logout" onsubmit="return confirm('Выйти из аккаунта?')">
+        <input type="hidden" name="csrf" value="fixture-csrf">
+        <button class="nav-item" type="submit"><svg class="ico " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg><span>Выйти · admin</span></button>
+      </form>
+      
+    </div>
+  </aside>
+  <main id="main">
+    
+    <div class="push-ask" id="push-ask" hidden role="region" aria-label="Уведомления">
+      <span class="pa-ico">🔔</span>
+      <span class="grow"><b>Включите уведомления</b><small>Сразу узнаете, когда заказ выполнен и баланс пополнен — даже если приложение закрыто.</small></span>
+      <button class="btn primary sm" type="button" data-push-on>Включить</button>
+      <button class="icon-btn pa-x" type="button" aria-label="Не сейчас" data-push-later><svg class="ico " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+    </div>
+    
+    
+    
+    
+<section class="page-hero tr-hero">
+  <div>
+    <h1>Посещаемость</h1>
+    <p>Кто заходит на сайт, откуда, что смотрит и когда покупает</p>
+  </div>
+  <div class="online" role="status"><i></i>Сейчас на сайте: <b>1</b></div>
+</section>
+
+<div class="periods" role="tablist" aria-label="Период">
+  <a role="tab" class="" aria-selected="false" href="/admin/traffic?period=today">Сегодня</a><a role="tab" class="on" aria-selected="true" href="/admin/traffic?period=7d">7 дней</a><a role="tab" class="" aria-selected="false" href="/admin/traffic?period=30d">30 дней</a><a role="tab" class="" aria-selected="false" href="/admin/traffic?period=90d">90 дней</a>
+</div>
+<p class="muted small tz">Время — по UTC+5. Проценты — сравнение с прошлым таким же периодом. Админы не считаются.</p>
+
+
+<div class="grid scards">
+  <div class="scard"><div class="label">Посетители</div><div class="value">1</div><div class="note"><span class="dlt good" title="В прошлом периоде было 0">новое</span> новых 1</div></div>
+  <div class="scard"><div class="label">Визиты</div><div class="value">1</div><div class="note"><span class="dlt good" title="В прошлом периоде было 0">новое</span> заходов на сайт</div></div>
+  <div class="scard"><div class="label">Просмотры</div><div class="value">1</div><div class="note"><span class="dlt good" title="В прошлом периоде было 0">новое</span> 1.0 стр. за визит</div></div>
+  <div class="scard"><div class="label">Время на сайте</div><div class="value">0 с</div><div class="note"> в среднем за визит</div></div>
+  <div class="scard"><div class="label">Отказы</div><div class="value">100%</div><div class="note"><span class="dlt good" title="В прошлом периоде было 0">новое</span> ушли после 1 страницы</div></div>
+  <div class="scard"><div class="label">Регистрации</div><div class="value">1</div><div class="note"><span class="dlt good" title="В прошлом периоде было 0">новое</span> конверсия 100.0%</div></div>
+  <div class="scard"><div class="label">Покупки</div><div class="value">0</div><div class="note"> покупателей 0</div></div>
+  <div class="scard"><div class="label">Выручка</div><div class="value">$0.0000</div><div class="note"> выполненные заказы</div></div>
+</div>
+
+
+<div class="card insights">
+  <div class="card-head"><h3><svg class="ico " width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8Z"/></svg>Главное за период</h3></div>
+  <div class="ins-grid">
+    <div class="ins"><span class="ins-label">Больше всего заходят</span>
+      <b>среда, 11:00–12:00</b>
+      <span class="muted small">Пиковый час в целом — 11:00, день — среда</span></div>
+    <div class="ins"><span class="ins-label">Больше всего покупают</span>
+      <b>—</b><span class="muted small">За период покупок нет</span></div>
+    <div class="ins"><span class="ins-label">Когда запускать рекламу</span>
+      <b>за 1–2 часа до 11:00</b>
+      <span class="muted small">Чтобы объявление набрало показы к пику заходов</span></div>
+    <div class="ins"><span class="ins-label">Главный источник</span>
+      <b>Прямые заходы</b><span class="muted small">1 визитов из 1</span></div>
+  </div>
+</div>
+
+<div class="card chart-card">
+  <div class="card-head"><h3>Посетители по дням</h3><span class="muted small">Наведите на столбик — подробности</span></div>
+  
+  <div class="vbars" style="--n: 7" role="img" aria-label="Посетители по дням">
+    
+    <div class="vb" tabindex="0" data-tip="01.10.2026, чт|Посетители: 0|Визиты: 0|Просмотры: 0|Покупки: 0">
+      <span class="vb-bar" style="--h: 0.0%"></span>
+    </div>
+    
+    <div class="vb" tabindex="0" data-tip="02.10.2026, пт|Посетители: 0|Визиты: 0|Просмотры: 0|Покупки: 0">
+      <span class="vb-bar" style="--h: 0.0%"></span>
+    </div>
+    
+    <div class="vb" tabindex="0" data-tip="03.10.2026, сб|Посетители: 0|Визиты: 0|Просмотры: 0|Покупки: 0">
+      <span class="vb-bar" style="--h: 0.0%"></span>
+    </div>
+    
+    <div class="vb" tabindex="0" data-tip="04.10.2026, вс|Посетители: 0|Визиты: 0|Просмотры: 0|Покупки: 0">
+      <span class="vb-bar" style="--h: 0.0%"></span>
+    </div>
+    
+    <div class="vb" tabindex="0" data-tip="05.10.2026, пн|Посетители: 0|Визиты: 0|Просмотры: 0|Покупки: 0">
+      <span class="vb-bar" style="--h: 0.0%"></span>
+    </div>
+    
+    <div class="vb" tabindex="0" data-tip="06.10.2026, вт|Посетители: 0|Визиты: 0|Просмотры: 0|Покупки: 0">
+      <span class="vb-bar" style="--h: 0.0%"></span>
+    </div>
+    
+    <div class="vb" tabindex="0" data-tip="07.10.2026, ср|Посетители: 1|Визиты: 1|Просмотры: 1|Покупки: 0">
+      <span class="vb-bar" style="--h: 100.0%"></span>
+    </div>
+    
+  </div>
+  <div class="vbars-x" style="--n: 7">
+    
+    <span>01.10</span><span>02.10</span><span>03.10</span><span>04.10</span><span>05.10</span><span>06.10</span><span>07.10</span>
+  </div>
+  <p class="muted small" style="margin:8px 0 0">Максимум за день: <b>1</b> посетителей</p>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card">
+    <div class="card-head"><h3>Заходы по часам</h3><span class="muted small">Начало визита</span></div>
+    <div class="hbars"><div class="hb" tabindex="0" data-tip="00:00–00:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="01:00–01:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="02:00–02:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="03:00–03:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="04:00–04:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="05:00–05:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="06:00–06:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="07:00–07:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="08:00–08:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="09:00–09:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="10:00–10:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="11:00–11:59|Визитов: 1"><span style="--h: 100.0%"></span></div><div class="hb" tabindex="0" data-tip="12:00–12:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="13:00–13:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="14:00–14:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="15:00–15:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="16:00–16:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="17:00–17:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="18:00–18:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="19:00–19:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="20:00–20:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="21:00–21:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="22:00–22:59|Визитов: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="23:00–23:59|Визитов: 0"><span style="--h: 0.0%"></span></div></div>
+    <div class="hbars-x"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h3>Покупки по часам</h3><span class="muted small">Выполненные заказы</span></div>
+    <div class="hbars buys"><div class="hb" tabindex="0" data-tip="00:00–00:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="01:00–01:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="02:00–02:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="03:00–03:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="04:00–04:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="05:00–05:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="06:00–06:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="07:00–07:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="08:00–08:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="09:00–09:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="10:00–10:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="11:00–11:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="12:00–12:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="13:00–13:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="14:00–14:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="15:00–15:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="16:00–16:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="17:00–17:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="18:00–18:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="19:00–19:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="20:00–20:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="21:00–21:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="22:00–22:59|Покупок: 0"><span style="--h: 0.0%"></span></div><div class="hb" tabindex="0" data-tip="23:00–23:59|Покупок: 0"><span style="--h: 0.0%"></span></div></div>
+    <div class="hbars-x"><span>0</span><span>6</span><span>12</span><span>18</span><span>23</span></div>
+  </div>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card"><div class="card-head"><h3>Когда заходят</h3><span class="muted small">День недели × час</span></div>
+<div class="heat" role="table" aria-label="Визитов по дням недели и часам">
+  <div class="heat-row heat-hours" role="row"><span></span><span role="columnheader">0</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">3</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">6</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">9</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">12</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">15</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">18</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">21</span><span role="columnheader"></span><span role="columnheader"></span></div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Пн</span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 11:00–11:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Вт</span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 11:00–11:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Ср</span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l5" data-tip="Ср, 11:00–11:59|Визитов: 1"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Чт</span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 11:00–11:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Пт</span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 11:00–11:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Сб</span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 11:00–11:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Вс</span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 00:00–00:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 01:00–01:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 02:00–02:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 03:00–03:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 04:00–04:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 05:00–05:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 06:00–06:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 07:00–07:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 08:00–08:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 09:00–09:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 10:00–10:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 11:00–11:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 12:00–12:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 13:00–13:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 14:00–14:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 15:00–15:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 16:00–16:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 17:00–17:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 18:00–18:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 19:00–19:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 20:00–20:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 21:00–21:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 22:00–22:59|Визитов: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 23:00–23:59|Визитов: 0"></span>
+  </div>
+  
+  <div class="heat-legend"><span>меньше</span><i class="hc l0"></i><i class="hc l1"></i><i class="hc l2"></i><i class="hc l3"></i><i class="hc l4"></i><i class="hc l5"></i><span>больше</span></div>
+</div>
+</div>
+  <div class="card"><div class="card-head"><h3>Когда покупают</h3><span class="muted small">День недели × час</span></div>
+<div class="heat" role="table" aria-label="Покупок по дням недели и часам">
+  <div class="heat-row heat-hours" role="row"><span></span><span role="columnheader">0</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">3</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">6</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">9</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">12</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">15</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">18</span><span role="columnheader"></span><span role="columnheader"></span><span role="columnheader">21</span><span role="columnheader"></span><span role="columnheader"></span></div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Пн</span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пн, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Вт</span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вт, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Ср</span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Ср, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Чт</span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Чт, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Пт</span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Пт, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Сб</span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Сб, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-row" role="row"><span class="heat-day" role="rowheader">Вс</span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 00:00–00:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 01:00–01:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 02:00–02:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 03:00–03:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 04:00–04:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 05:00–05:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 06:00–06:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 07:00–07:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 08:00–08:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 09:00–09:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 10:00–10:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 11:00–11:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 12:00–12:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 13:00–13:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 14:00–14:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 15:00–15:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 16:00–16:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 17:00–17:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 18:00–18:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 19:00–19:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 20:00–20:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 21:00–21:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 22:00–22:59|Покупок: 0"></span><span role="cell" tabindex="0" class="hc l0" data-tip="Вс, 23:00–23:59|Покупок: 0"></span>
+  </div>
+  
+  <div class="heat-legend"><span>меньше</span><i class="hc l0"></i><i class="hc l1"></i><i class="hc l2"></i><i class="hc l3"></i><i class="hc l4"></i><i class="hc l5"></i><span>больше</span></div>
+</div>
+</div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h3>Воронка</h3><span class="muted small">От захода на сайт до покупки</span></div>
+  <div class="funnel">
+    
+    <div class="fn-row">
+      <span class="fn-t">Посетители</span>
+      <div class="fn-track"><div class="fn-bar" style="--w: 100.0%"></div></div>
+      <b class="fn-n">1</b>
+      <span class="fn-c muted small"></span>
+    </div>
+    
+    <div class="fn-row">
+      <span class="fn-t">Регистрации</span>
+      <div class="fn-track"><div class="fn-bar" style="--w: 100.0%"></div></div>
+      <b class="fn-n">1</b>
+      <span class="fn-c muted small">100.0% от пред.</span>
+    </div>
+    
+    <div class="fn-row">
+      <span class="fn-t">Пополнили баланс</span>
+      <div class="fn-track"><div class="fn-bar" style="--w: 0%"></div></div>
+      <b class="fn-n">0</b>
+      <span class="fn-c muted small">0.0% от пред.</span>
+    </div>
+    
+    <div class="fn-row">
+      <span class="fn-t">Купили</span>
+      <div class="fn-track"><div class="fn-bar" style="--w: 0%"></div></div>
+      <b class="fn-n">0</b>
+      <span class="fn-c muted small"></span>
+    </div>
+    
+  </div>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card"><div class="card-head"><h3>Источники</h3><span class="muted small">Откуда пришли, визиты</span></div>
+  
+  <div class="tl-row" data-tip="Прямые заходы|1">
+    <div class="tl-bar" style="--w: 100%"></div>
+    <span class="tl-name">Прямые заходы</span>
+    <b class="tl-n">1</b>
+  </div>
+  
+</div>
+  <div class="card">
+    <div class="card-head"><h3>Рекламные кампании</h3><span class="muted small">По UTM-меткам</span></div>
+    
+  <div class="empty small">Кампаний пока нет — добавьте метку к ссылке в рекламе (пример ниже)</div>
+
+    <details class="utm-help"><summary>Как отметить ссылку в рекламе</summary>
+      <p class="small">Добавьте метку в конец ссылки — и здесь будет видно, сколько людей пришло именно с этой рекламы:</p>
+      <code class="utm-code">https://donatix.tj/?utm_source=instagram&amp;utm_campaign=oktyabr</code>
+      <p class="small muted">utm_source — где реклама (instagram, telegram, tiktok), utm_campaign — любое имя кампании латиницей.</p>
+    </details>
+  </div>
+</div>
+
+<div class="grid two tr-two">
+  <div class="card"><div class="card-head"><h3>Популярные страницы</h3><span class="muted small">Просмотры</span></div>
+  
+  <div class="tl-row" data-tip="Вход|1 просм. · 1 посет.">
+    <div class="tl-bar" style="--w: 100%"></div>
+    <span class="tl-name">Вход</span>
+    <b class="tl-n">1</b>
+  </div>
+  
+</div>
+  <div class="card"><div class="card-head"><h3>Страницы входа</h3><span class="muted small">С какой страницы начали визит</span></div>
+  
+  <div class="tl-row" data-tip="Вход|1">
+    <div class="tl-bar" style="--w: 100%"></div>
+    <span class="tl-name">Вход</span>
+    <b class="tl-n">1</b>
+  </div>
+  
+</div>
+</div>
+
+<div class="grid three tr-two">
+  <div class="card"><div class="card-head"><h3>Устройства</h3></div>
+  
+  <div class="tl-row" data-tip="Компьютер|1">
+    <div class="tl-bar" style="--w: 100%"></div>
+    <span class="tl-name">Компьютер</span>
+    <b class="tl-n">1</b>
+  </div>
+  
+</div>
+  <div class="card"><div class="card-head"><h3>Браузеры</h3></div>
+  
+  <div class="tl-row" data-tip="Другой|1">
+    <div class="tl-bar" style="--w: 100%"></div>
+    <span class="tl-name">Другой</span>
+    <b class="tl-n">1</b>
+  </div>
+  
+</div>
+  <div class="card"><div class="card-head"><h3>Системы</h3></div>
+  
+  <div class="tl-row" data-tip="Другая|1">
+    <div class="tl-bar" style="--w: 100%"></div>
+    <span class="tl-name">Другая</span>
+    <b class="tl-n">1</b>
+  </div>
+  
+</div>
+</div>
+
+<div class="dx-tip" id="dx-tip" role="tooltip" hidden></div>
+<script>
+(function () {
+  const tip = document.getElementById("dx-tip");
+  const esc = s => s.replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+  function show(el, x, y) {
+    const [head, ...rows] = el.dataset.tip.split("|");
+    tip.innerHTML = "<b>" + esc(head) + "</b>" + rows.map(r => "<span>" + esc(r) + "</span>").join("");
+    tip.hidden = false;
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, x - w / 2)) + "px";
+    tip.style.top = Math.max(8, y - h - 14) + "px";
+  }
+  document.addEventListener("pointerover", e => {
+    const el = e.target.closest("[data-tip]"); if (!el) return;
+    const r = el.getBoundingClientRect(); show(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener("pointerout", e => { if (e.target.closest("[data-tip]")) tip.hidden = true; });
+  document.addEventListener("focusin", e => {
+    const el = e.target.closest("[data-tip]"); if (!el) return;
+    const r = el.getBoundingClientRect(); show(el, r.left + r.width / 2, r.top);
+  });
+  document.addEventListener("focusout", () => { tip.hidden = true; });
+})();
+</script>
+
+  </main>
+</div>
+
+<nav class="tabbar" aria-label="Быстрые разделы">
+  <a href="/panel" class=""><svg class="ico " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg><span>Главная</span></a>
+  <a href="/panel/catalog" class=""><svg class="ico " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Каталог</span></a>
+  <a href="/panel/balance" class="tab-main "><svg class="ico " width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg><span>Пополнить</span></a>
+  <a href="/panel/orders" class=""><svg class="ico " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg><span>Заказы</span></a>
+  <button type="button" onclick="dxMenu(true)"><svg class="ico " width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h16"/></svg><span>Ещё</span></button>
+</nav>
+<script>
+  // Push-уведомления: подписка этого устройства (телефон, приложение, компьютер)
+  window.dxPush = (function () {
+    var csrf = "95pqNlUrlEZU44p6qkPUCzteO5n0pE3E", ok = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
+      && location.protocol === "https:";
+    function key(b64) {
+      var pad = "=".repeat((4 - b64.length % 4) % 4), raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+      return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); });
+    }
+    function post(url, data) {
+      var body = new FormData(); body.append("csrf", csrf);
+      Object.keys(data || {}).forEach(function (k) { body.append(k, data[k]); });
+      return fetch(url, { method: "POST", body: body, credentials: "same-origin" }).then(function (r) { return r.json(); });
+    }
+    async function subscribe() {
+      var reg = await navigator.serviceWorker.ready;
+      var info = await (await fetch("/panel/push/key", { credentials: "same-origin" })).json();
+      if (!info.ok) throw new Error("Уведомления на сервере ещё не включены");
+      var sub = await reg.pushManager.getSubscription() ||
+        await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key(info.key) });
+      var j = sub.toJSON();
+      return post("/panel/push/subscribe", { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth });
+    }
+    async function enable() {
+      if (!ok) throw new Error("Этот браузер не поддерживает уведомления. Откройте сайт в Chrome или приложении.");
+      var perm = await Notification.requestPermission();
+      if (perm !== "granted") throw new Error("Уведомления запрещены. Разрешите их в настройках телефона для Donatix.");
+      return subscribe();
+    }
+    async function disable() {
+      var reg = await navigator.serviceWorker.ready, sub = await reg.pushManager.getSubscription();
+      if (sub) { await post("/panel/push/unsubscribe", { endpoint: sub.endpoint }); await sub.unsubscribe(); }
+    }
+    async function state() {
+      if (!ok) return "unsupported";
+      if (Notification.permission === "denied") return "denied";
+      var reg = await navigator.serviceWorker.getRegistration();
+      var sub = reg && await reg.pushManager.getSubscription();
+      return sub && Notification.permission === "granted" ? "on" : "off";
+    }
+    // Разрешение уже дано — тихо обновляем подписку этого устройства раз за сессию
+    if (ok && Notification.permission === "granted") {
+      try { if (!sessionStorage.getItem("dx-push-sync")) { sessionStorage.setItem("dx-push-sync", "1"); subscribe().catch(function () {}); } } catch (e) {}
+    }
+    // Плашка «Включите уведомления»: показываем, если ещё не спрашивали и человек не нажал «Не сейчас» (на 7 дней)
+    var ask = document.getElementById("push-ask");
+    if (ask && ok && Notification.permission === "default") {
+      var later = 0; try { later = +localStorage.getItem("dx-push-later") || 0; } catch (e) {}
+      if (Date.now() - later > 7 * 864e5) ask.hidden = false;
+      ask.addEventListener("click", function (e) {
+        if (e.target.closest("[data-push-later]")) {
+          ask.hidden = true; try { localStorage.setItem("dx-push-later", String(Date.now())); } catch (er) {}
+        } else if (e.target.closest("[data-push-on]")) {
+          enable().then(function () { ask.innerHTML = "<span class='pa-ico'>✅</span><b>Уведомления включены</b>"; setTimeout(function () { ask.hidden = true; }, 2500); })
+            .catch(function (err) { ask.querySelector("small").textContent = err.message; });
+        }
+      });
+    }
+    return { supported: ok, enable: enable, disable: disable, state: state, test: function () { return post("/panel/push/test"); } };
+  })();
+
+  // «Установить приложение»: Chrome сам предлагает поставить сайт как приложение — показываем кнопку
+  (function () {
+    var prompt = null, d = document.documentElement;
+    window.addEventListener("beforeinstallprompt", function (e) {
+      e.preventDefault(); prompt = e;
+      if (!d.classList.contains("is-app")) d.classList.add("can-install");
+    });
+    window.addEventListener("appinstalled", function () { d.classList.remove("can-install"); prompt = null; });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest("[data-install]") || !prompt) return;
+      prompt.prompt();
+      prompt.userChoice.finally(function () { prompt = null; d.classList.remove("can-install"); });
+    });
+  })();
+
+  // Потянуть вниз — обновить (в приложении нет кнопки «обновить», а статус заказа хочется проверить)
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains("is-app") || !("ontouchstart" in window)) return;
+    var ind = document.createElement("div"), y0 = null, dy = 0;
+    ind.className = "ptr";
+    ind.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12l7 7 7-7"/></svg>';
+    document.body.appendChild(ind);
+    window.addEventListener("touchstart", function (e) {
+      y0 = window.scrollY <= 0 && !d.classList.contains("menu-open") ? e.touches[0].clientY : null; dy = 0;
+    }, { passive: true });
+    window.addEventListener("touchmove", function (e) {
+      if (y0 === null) return;
+      dy = Math.max(0, Math.min(120, e.touches[0].clientY - y0));
+      ind.style.transition = "none";
+      ind.style.transform = "translateY(" + (dy * 0.8 - 50) + "px)";
+      ind.classList.toggle("ready", dy > 80);
+    }, { passive: true });
+    window.addEventListener("touchend", function () {
+      if (y0 === null) return;
+      ind.style.transition = "";
+      if (dy > 80) { ind.classList.add("spin"); ind.style.transform = "translateY(24px)"; location.reload(); }
+      else { ind.style.transform = "translateY(-50px)"; }
+      y0 = null;
+    });
+  })();
+
+  // Как в приложении: шапка прячется при прокрутке вниз, лёгкая вибрация на вкладках, шторка «Ещё» смахивается вниз
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains("app-ui")) return;
+    var lastY = window.scrollY, ticking = false;
+    window.addEventListener("scroll", function () {
+      if (ticking) return; ticking = true;
+      requestAnimationFrame(function () {
+        var y = window.scrollY, down = y > lastY + 4, up = y < lastY - 4;
+        if (down && y > 80) d.classList.add("hdr-hide"); else if (up || y < 40) d.classList.remove("hdr-hide");
+        lastY = y; ticking = false;
+      });
+    }, { passive: true });
+    document.addEventListener("click", function (e) {
+      if (e.target.closest(".tabbar a, .tabbar button, .btn.primary") && navigator.vibrate) { try { navigator.vibrate(8); } catch (er) {} }
+      if (d.classList.contains("menu-open") && !e.target.closest("#side") && !e.target.closest(".tabbar")) dxMenu(false);
+    });
+    var side = document.getElementById("side"), head = side && side.querySelector(".drawer-head"), y0 = null;
+    if (head) {
+      head.addEventListener("touchstart", function (e) { y0 = e.touches[0].clientY; side.classList.add("dragging"); }, { passive: true });
+      head.addEventListener("touchmove", function (e) {
+        if (y0 === null) return;
+        side.style.setProperty("--sheet-drag", Math.max(0, e.touches[0].clientY - y0) + "px");
+      }, { passive: true });
+      head.addEventListener("touchend", function (e) {
+        var dy = (e.changedTouches[0] || {}).clientY - y0; y0 = null;
+        side.classList.remove("dragging"); side.style.removeProperty("--sheet-drag");
+        if (dy > 90) dxMenu(false);
+      });
+    }
+  })();
+
+  function dxMenu(open) {
+    document.getElementById("side").classList.toggle("open", open);
+    document.documentElement.classList.toggle("menu-open", open);
+    document.body.classList.toggle("menu-open", open);
+  }
+  // «Копировать»: clipboard API, а где его нет (http, встроенный браузер Telegram) — через выделение
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-copy]");
+    if (!btn) return;
+    e.preventDefault();
+    var text = btn.getAttribute("data-copy"), label = btn.innerHTML;
+    var done = function () {
+      btn.textContent = "✓ Скопировано"; btn.classList.add("copied");
+      setTimeout(function () { btn.innerHTML = label; btn.classList.remove("copied"); }, 2000);
+    };
+    var fallback = function () {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.cssText = "position:fixed;top:0;left:0;opacity:0";
+      document.body.appendChild(ta); ta.focus(); ta.select(); ta.setSelectionRange(0, text.length);
+      var ok = false; try { ok = document.execCommand("copy"); } catch (err) {}
+      document.body.removeChild(ta);
+      if (ok) done(); else window.prompt("Скопируйте код:", text);
+    };
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  });
+</script>
+
+
+
+
+
+<script src="/static/code.js?v=7beb259e24" defer></script>
+<script>
+  var dxCalm = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function dxTheme() {
+    var r = document.documentElement, t = r.getAttribute("data-theme") === "dark" ? "light" : "dark";
+    var apply = function () { r.setAttribute("data-theme", t); };
+    if (document.startViewTransition && !dxCalm) {
+      r.classList.add("theme-fade");
+      document.startViewTransition(apply).finished.finally(function () { r.classList.remove("theme-fade"); });
+    } else apply();
+    try { localStorage.setItem("dx-theme", t); } catch (e) {}
+  }
+
+  // Секции главной проявляются, когда до них докрутили
+  (function () {
+    var els = document.querySelectorAll("[data-reveal]");
+    if (!("IntersectionObserver" in window) || dxCalm) {
+      els.forEach(function (el) { el.classList.add("in"); });
+      return;
+    }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+      });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    els.forEach(function (el) { io.observe(el); });
+  })();
+
+  // Суммы в карточках-счётчиках плавно набегают от нуля
+  (function () {
+    if (dxCalm || !window.requestAnimationFrame) return;
+    document.querySelectorAll(".stat .value, .balance-card b, .bal-amount, .bal-tile .t-value").forEach(function (el) {
+      el = el.querySelector(".cur-tjs") || el;   // сумма в сомони — внутри своего span (с подсказкой в $)
+      var m = el.textContent.trim().match(/^(\$?)(\d+)(?:\.(\d+))?(\s*с\.)?$/);
+      if (!m) return;
+      var prefix = m[1], suffix = m[4] || "", digits = (m[3] || "").length, target = parseFloat(m[2] + "." + (m[3] || "0"));
+      if (!target) return;
+      var start = performance.now(), dur = 700;
+      (function step(now) {
+        var k = Math.min(1, (now - start) / dur), v = target * (1 - Math.pow(1 - k, 3));
+        el.textContent = prefix + v.toFixed(digits) + suffix;
+        if (k < 1) requestAnimationFrame(step);
+      })(start);
+    });
+  })();
+  // Заставка при входе: 3–5 секунд — не меньше 3 с (анимация и название), прячем, как только страница готова, не позже 5 с
+  (function () {
+    var d = document.documentElement;
+    if (!d.classList.contains("splash-on")) return;
+    var t0 = window.performance && performance.timing ? performance.timing.navigationStart || Date.now() : Date.now();
+    var done = false;
+    function hide() {
+      if (done) return;
+      done = true;
+      setTimeout(function () {
+        d.classList.add("splash-out");
+        try { sessionStorage.setItem("dx-splash", "1"); } catch (e) {}
+        setTimeout(function () { d.classList.remove("splash-on", "splash-out"); }, 450);
+      }, Math.max(0, 3000 - (Date.now() - t0)));
+    }
+    if (document.readyState === "complete") hide(); else window.addEventListener("load", hide);
+    setTimeout(hide, Math.max(3000, 5000 - (Date.now() - t0)));   // медленный интернет: не дольше 5 с
+  })();
+
+  // Переход между страницами: тонкая полоска сверху сразу после нажатия — видно, что приложение работает
+  (function () {
+    var bar = document.getElementById("nav-progress");
+    if (!bar) return;
+    function go() { bar.classList.remove("done"); void bar.offsetWidth; bar.classList.add("go"); }
+    document.addEventListener("click", function (e) {
+      var a = e.target.closest("a[href]");
+      if (!a || e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || a.target === "_blank" || a.hasAttribute("download")) return;
+      var href = a.getAttribute("href");
+      if (!href || href.charAt(0) === "#" || /^(mailto:|tel:|tg:|javascript:)/i.test(href)) return;
+      if (a.origin && a.origin !== location.origin) return;
+      go();
+    });
+    document.addEventListener("submit", function (e) { if (!e.defaultPrevented && e.target.method !== "dialog") go(); });
+    window.addEventListener("pageshow", function () { bar.classList.remove("go"); bar.classList.add("done"); });
+  })();
+
+  // Офлайн-экран и «Установить приложение» — нужен service worker
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    window.addEventListener("load", function () { navigator.serviceWorker.register("/sw.js").catch(function () {}); });
+  }
+</script>
+</body>
+</html>
