@@ -57,8 +57,8 @@ workflows:
         flutter build appbundle --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 4 ))}"
         --dart-define=DONATIX_URL="$DONATIX_URL"'
     artifacts:
-    - Donatix_Flutter/build/app/outputs/flutter-apk/app-release.apk
-    - Donatix_Flutter/build/app/outputs/bundle/release/app-release.aab
+    - $CM_BUILD_DIR/**/outputs/flutter-apk/app-release.apk
+    - $CM_BUILD_DIR/**/outputs/bundle/release/*.aab
     working_directory: Donatix_Flutter
   ios-check:
     name: Donatix iOS simulator build and native checks
