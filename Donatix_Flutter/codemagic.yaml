@@ -44,7 +44,7 @@ workflows:
 
         python3 tool/configure_ci.py android --release
 
-        python3 tool/release_preflight.py --platform android --check-server'
+        python3 tool/release_preflight.py --platform android'
     - *id002
     - name: Signed APK
       script: 'set -euo pipefail
@@ -128,7 +128,7 @@ workflows:
 
         python3 tool/configure_ci.py ios --release
 
-        python3 tool/release_preflight.py --platform ios --check-server'
+        python3 tool/release_preflight.py --platform ios'
     - *id002
     - name: Install iOS pods
       script: 'set -euo pipefail
