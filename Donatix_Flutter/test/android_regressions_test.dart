@@ -47,6 +47,13 @@ ResponseBody pageReply(String value, [int status = 200]) =>
       },
     );
 
+void expectNoFrameworkException(WidgetTester tester) {
+  final exception = tester.takeException();
+  // Rethrow the original diagnostic instead of hiding it behind "Expected null".
+  // Codemagic then shows the actual framework error message in the log.
+  if (exception != null) throw exception;
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   const storage = MethodChannel('plugins.it_nomads.com/flutter_secure_storage');
@@ -471,6 +478,7 @@ void main() {
             ),
           );
           await tester.pumpAndSettle();
+          expectNoFrameworkException(tester);
           expect(find.byType(Scaffold), findsOneWidget);
           expect(find.text('Страница недоступна.'), findsNothing);
           // Exercise off-screen forms and tables as well as the initial viewport.
@@ -491,10 +499,10 @@ void main() {
                 ),
               );
               await tester.pumpAndSettle();
-              expect(tester.takeException(), isNull);
+              expectNoFrameworkException(tester);
             }
           }
-          expect(tester.takeException(), isNull);
+          expectNoFrameworkException(tester);
           await tester.pumpWidget(const SizedBox.shrink());
         },
       );

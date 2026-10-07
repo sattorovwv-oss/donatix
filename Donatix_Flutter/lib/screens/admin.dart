@@ -921,7 +921,7 @@ class _AdminScreenState extends State<AdminScreen> {
           children: [
             SitePulseDot(color: colors.semantic('ok')),
             const SizedBox(width: 8),
-            Text(n.text.trim()),
+            Flexible(child: Text(n.text.trim())),
           ],
         ),
       );
@@ -1314,9 +1314,11 @@ class _AdminScreenState extends State<AdminScreen> {
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             const SizedBox(width: 10),
-            Text(
-              e.querySelector('.fn-c')?.text ?? '',
-              style: TextStyle(fontSize: 13, color: colors.muted),
+            Flexible(
+              child: Text(
+                e.querySelector('.fn-c')?.text ?? '',
+                style: TextStyle(fontSize: 13, color: colors.muted),
+              ),
             ),
           ],
         ),
