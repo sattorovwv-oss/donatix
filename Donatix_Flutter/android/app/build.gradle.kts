@@ -5,6 +5,7 @@ plugins {
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
+if (file("google-services.json").exists()) apply(plugin = "com.google.gms.google-services")
 val signing = Properties()
 val signingFile = rootProject.file("key.properties")
 if (signingFile.exists()) signingFile.inputStream().use { signing.load(it) }
@@ -46,6 +47,8 @@ android {
 }
 flutter { source = "../.." }
 dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:34.19.0"))
+    implementation("com.google.firebase:firebase-messaging")
     implementation("androidx.work:work-runtime-ktx:2.10.1")
     implementation("androidx.core:core-ktx:1.16.0")
 }

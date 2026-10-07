@@ -1,899 +1,768 @@
---- a/donatix/api.py
-+++ b/donatix/api.py
-@@ -6,6 +6,7 @@
- from __future__ import annotations
- 
- import sqlite3
-+import secrets
- from typing import Any
- 
- from fastapi import APIRouter, Depends, Header, Query, Request
-@@ -36,6 +37,8 @@
+--- v3/donatix/api.py
++++ v4/donatix/api.py
+@@ -510,4 +510,6 @@
  
  
- def _limit(request: Request, category: str, key: str) -> None:
-+    if key == '0':
-+        key = 'guest:' + (request.client.host if request.client else 'unknown')
-     wait = request.app.state.limiter.hit(category, key)
-     if wait is not None:
-         raise ApiError("Слишком много запросов.", "rate_limited", 429, {"Retry-After": str(int(wait) + 1)})
-@@ -51,6 +54,17 @@
-     if not key and authorization and authorization.lower().startswith("bearer "):
-         key = authorization[7:].strip()
-     key = key.strip('"\'').strip()   # ключ, вставленный вместе с кавычками, тоже подходит
-+    if not key and request.session.get("user_id"):
-+        from .deps import session_user
-+        user = session_user(request, conn)
-+        if user is None:
-+            raise ApiError("Сессия истекла. Войдите снова.", "unauthorized", 401)
-+        if request.method not in ("GET", "HEAD", "OPTIONS"):
-+            expected = request.session.get("csrf", "")
-+            supplied = request.headers.get("x-csrf-token", "")
-+            if not expected or not secrets.compare_digest(expected, supplied):
-+                raise ApiError("Обновите сессию и повторите запрос.", "csrf_invalid", 403)
-+        return user
-     if not key:
-         raise ApiError("Нет API-ключа. Передайте заголовок X-API-Key.", "unauthorized", 401)
-     user = accounts.user_by_api_key(conn, key)
-@@ -86,6 +100,7 @@
-         "currency": "USD",
-         "summary": {"totalSpent": fmt(summary["spent"]), "totalOrders": summary["n"]},
-         "createdAt": user["created_at"],
-+        "project": user["project"],
-     }
+ from .mobile import router as mobile_router
++from .apple_auth import router as apple_router
++mobile_router.include_router(apple_router)
+ router.include_router(mobile_router)
+--- v3/donatix/mobile.py
++++ v4/donatix/mobile.py
+@@ -5,6 +5,7 @@
+ import secrets
+ import time
+ from decimal import Decimal, InvalidOperation
++from typing import Literal
+ from urllib.parse import quote as urlquote
+ 
+ from fastapi import APIRouter, Depends, Header, Request
+@@ -22,6 +23,7 @@
+ class PushIn(BaseModel):
+     device_id: str = Field(min_length=32, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+     token: str = Field(min_length=20, max_length=4096)
++    platform: Literal['android', 'ios'] = 'android'
  
  
-@@ -114,14 +129,17 @@
- 
- @router.get("/transactions")
- def transactions(
--    request: Request, page: int = 1, limit: int = 20, user=Depends(api_user), conn=Depends(get_conn)
-+    request: Request, page: int = 1, limit: int = 20, user=Depends(api_user), conn=Depends(get_conn), type: str = ""
- ) -> dict[str, Any]:
-     _limit(request, "account", str(user["id"]))
-     page, limit = _page(page, limit)
--    total = conn.execute("SELECT COUNT(*) FROM transactions WHERE user_id = ?", (user["id"],)).fetchone()[0]
-+    where, args = "user_id = ?", [user["id"]]
-+    if type in ("credit", "debit"):
-+        where += " AND amount_micro " + ("> 0" if type == "credit" else "< 0")
-+    total = conn.execute(f"SELECT COUNT(*) FROM transactions WHERE {where}", args).fetchone()[0]
-     rows = conn.execute(
--        "SELECT * FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
--        (user["id"], limit, (page - 1) * limit),
-+        f"SELECT * FROM transactions WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?",
-+        (*args, limit, (page - 1) * limit),
-     ).fetchall()
-     return {"ok": True, "items": [_tx_view(r, conn) for r in rows], "total": total, "page": page, "limit": limit}
- 
-@@ -179,6 +197,7 @@
-         raise ApiError("Товар не найден.", "product_not_found", 404)
-     view = catalog.public_view(p, accounts.markup_for(user, config, p["kind"]))
-     view["account_check"] = account_check.can_check(request.app.state.supplier, p)
-+    view["delivery_note"] = catalog.delivery_note(p.get("category_name"))
-     return {"ok": True, "product": view}
+ class PushRemove(BaseModel):
+@@ -40,8 +42,9 @@
+     _limit(request,'account',str(user['id']))
+     if not request.session.get('sid') or request.session.get('user_id') != user['id']:
+         raise ApiError('Войдите в мобильное приложение.', 'session_required',403)
+-    native_push.register(conn,config,user['id'],request.session['sid'],body.device_id,body.token)
+-    return {'ok':True,'configured':native_push.enabled()}
++    native_push.register(conn,config,user['id'],request.session['sid'],body.device_id,body.token,body.platform)
++    return {'ok':True,'configured':native_push.enabled(),
++            'binding':native_push.binding(config,request.session['sid'],user['id'],body.device_id)}
  
  
-@@ -216,6 +235,20 @@
-     product_id: str = Field(max_length=64)
-     quantity: int = 1
-     fields: dict[str, str] = Field(default_factory=dict)
-+    expected_total_usd: str | None = Field(default=None, max_length=32)
+ @router.post('/push/unregister')
+@@ -91,12 +94,14 @@
+ 
+ @router.get("/config")
+ def configuration(conn=Depends(get_conn), config=Depends(get_config)):
+-    from . import google_auth, sitecfg
++    from . import google_auth, sitecfg, apple_auth
+     return {"ok": True, "site_name": config.site_name,
+             "google_enabled": google_auth.enabled(config),
++            "apple_enabled": apple_auth.enabled(),
+             "registration_open": sitecfg.registration_open(conn),
+             "support_contact": config.support_contact, "tg_channel": config.tg_channel,
+-            "version": 3, "features": ["account_deletion", "native_fcm", "price_confirmation", "cart_recovery"]}
++            "version": 4, "platforms": ["android", "ios"],
++            "features": ["account_deletion", "native_fcm", "ios_apns", "apple_login", "price_confirmation", "cart_recovery"]}
+ 
+ 
+ @router.post("/notifications/read")
+--- v3/donatix/account_deletion.py
++++ v4/donatix/account_deletion.py
+@@ -33,6 +33,8 @@
+         reasons.append('Есть незавершённые заказы: сначала выдача или возврат.')
+     if conn.execute("SELECT 1 FROM payments WHERE user_id=? AND status='pending'", (uid,)).fetchone():
+         reasons.append('Есть пополнения на проверке: сначала нужно завершить проверку.')
++    if conn.execute("SELECT 1 FROM apple_identities WHERE user_id=? AND state<>'revoked'", (uid,)).fetchone():
++        reasons.append('Разрешение Sign in with Apple будет автоматически отозвано перед удалением.')
+     return reasons
+ 
+ 
+@@ -60,6 +62,7 @@
+     conn.execute('DELETE FROM native_push_outbox WHERE notification_id IN (SELECT id FROM notifications WHERE user_id=?)', (uid,))
+     for device in devices:
+         conn.execute('DELETE FROM native_push_outbox WHERE device_id=?', (device,))
++        conn.execute('DELETE FROM native_push_platforms WHERE device_id=?', (device,))
+     conn.execute('DELETE FROM native_push_devices WHERE user_id=?', (uid,))
+     conn.execute('DELETE FROM payment_msgs WHERE payment_id IN (SELECT id FROM payments WHERE user_id=?)', (uid,))
+     conn.execute('DELETE FROM shop_watch WHERE (kind IN (\'order\',\'orders\') AND obj_id IN (SELECT id FROM orders WHERE user_id=?)) '
+@@ -80,7 +83,7 @@
+     conn.execute('UPDATE users SET referred_by=NULL WHERE referred_by=?', (uid,))
+     conn.execute('UPDATE transactions SET created_by=NULL WHERE created_by=?', (uid,))
+     conn.execute('UPDATE payments SET resolved_by=NULL WHERE resolved_by=?', (uid,))
+-    for table in ('mobile_oauth','mobile_carts'):
++    for table in ('mobile_oauth','mobile_carts','apple_flows','apple_identities'):
+         if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone():
+             conn.execute(f'DELETE FROM {table} WHERE user_id=?', (uid,))
+     # Per-user settings (timezone, blocked bot eligibility, etc.) are not left behind.
+@@ -113,6 +116,8 @@
+ 
+ 
+ def finish_ready(conn, config):
++    from . import apple_auth
++    apple_auth.revoke_pending(conn, config)
+     deleted = []
+     for row in conn.execute("SELECT user_id FROM account_deletions WHERE state='waiting'").fetchall():
+         with db.tx(conn):
+@@ -129,11 +134,14 @@
+     with db.tx(conn):
+         conn.execute("INSERT INTO account_deletions (user_id,requested_at,state) VALUES (?,?,'waiting') "
+                      "ON CONFLICT(user_id) DO NOTHING", (uid,db.now()))
++        from . import apple_auth
++        apple_auth.queue_revocation(conn, uid)
+         reasons = blockers(conn,uid)
+         conn.execute('UPDATE logins SET ended_at=? WHERE user_id=? AND ended_at IS NULL', (db.now(),uid))
+         conn.execute('UPDATE api_keys SET revoked_at=?,key_enc=NULL WHERE user_id=?', (db.now(),uid))
+         conn.execute('UPDATE bots SET enabled=0,updated_at=? WHERE user_id=?', (db.now(),uid))
+         conn.execute("UPDATE users SET status='blocked',webhook_url=NULL,webhook_secret=NULL WHERE id=?", (uid,))
++        conn.execute('DELETE FROM native_push_platforms WHERE device_id IN (SELECT device_id FROM native_push_devices WHERE user_id=?)', (uid,))
+         conn.execute('DELETE FROM native_push_devices WHERE user_id=?', (uid,))
+         conn.execute('DELETE FROM push_subs WHERE user_id=?', (uid,))
+         if reasons:
+@@ -160,7 +168,7 @@
+                        (request.session['sid'],user['id'])).fetchone()
+     recent = row and (datetime.now(timezone.utc)-datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)).total_seconds() <= 300
+     if not recent:
+-        raise ApiError('Для подтверждения введите пароль или выйдите и войдите снова через Google.', 'reauth_required', 403)
++        raise ApiError('Для подтверждения введите пароль или выйдите и войдите снова через Google / Apple.', 'reauth_required', 403)
+ 
+ 
+ class DeleteIn(BaseModel):
+--- v3/donatix/db.py
++++ v4/donatix/db.py
+@@ -504,9 +504,10 @@
+             conn.execute("ALTER TABLE logins ADD COLUMN sid TEXT")
+             conn.execute("ALTER TABLE logins ADD COLUMN ended_at TEXT")
+             conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS logins_sid ON logins(sid) WHERE sid IS NOT NULL")
+-        from . import native_push, account_deletion
++        from . import native_push, account_deletion, apple_auth
+         native_push.init(conn)
+         account_deletion.init(conn)
++        apple_auth.init(conn)
+         conn.execute("PRAGMA optimize")   # статистика для планировщика запросов — чтобы брал индексы
+     finally:
+         conn.close()
+--- v3/donatix/native_push.py
++++ v4/donatix/native_push.py
+@@ -24,6 +24,15 @@
+         next_try REAL NOT NULL DEFAULT 0, claim TEXT, error TEXT,
+         UNIQUE(device_id, notification_id));
+     ''')
++    # Separate metadata keeps the six-column v3 table compatible with a code rollback.
++    conn.execute('CREATE TABLE IF NOT EXISTS native_push_platforms (device_id TEXT PRIMARY KEY, platform TEXT NOT NULL)')
++    conn.execute('DELETE FROM native_push_platforms WHERE device_id NOT IN (SELECT device_id FROM native_push_devices)')
 +
 +
-+def expected_price(value: str | None) -> int | None:
-+    if value is None:
-+        return None
-+    from decimal import Decimal, InvalidOperation
-+    try:
-+        price = Decimal(value) * 10000
-+        if not price.is_finite() or price <= 0 or price != price.to_integral_value():
-+            raise ValueError
-+        return int(price)
-+    except (ValueError, InvalidOperation, OverflowError):
-+        raise ApiError('Некорректная подтверждённая цена.', 'invalid_price') from None
++def binding(config, sid, user_id, device_id):
++    import hashlib, hmac
++    return hmac.new(config.secret_key.encode(),
++                    f'ios-push:{sid}:{user_id}:{device_id}'.encode(), hashlib.sha256).hexdigest()
  
  
- @router.post("/orders", status_code=201)
-@@ -232,7 +265,8 @@
-         order, replay = orders.create_order(
-             conn, config, request.app.state.supplier, user,
-             product_id=body.product_id, quantity=body.quantity, fields=body.fields,
--            client_idem_key=idempotency_key, source="api",
-+            client_idem_key=idempotency_key, source="panel" if "api_key_id" not in user.keys() else "api",
-+            expected_total_micro=expected_price(body.expected_total_usd),
-         )
-     except orders.OrderError as exc:
-         raise ApiError(str(exc), exc.code, exc.http_status) from None
-@@ -242,21 +276,33 @@
- @router.get("/orders")
- def list_orders(
-     request: Request, page: int = 1, limit: int = 20, status: str = "",
--    user=Depends(api_user), conn=Depends(get_conn),
-+    user=Depends(api_user), conn=Depends(get_conn), q: str = "", period: str = "all",
-+    date_from: str = "", date_to: str = "",
- ) -> dict[str, Any]:
-     _limit(request, "status", str(user["id"]))
-     page, limit = _page(page, limit)
--    where, args = "user_id = ?", [user["id"]]
-+    from . import periods, timez
-+    tz_name, _ = timez.resolve(conn, user, request.cookies.get("dx_tz"))
-+    pr = periods.resolve(timez.zone(tz_name), period, date_from, date_to)
-+    condition, parameters = pr.sql("created_at")
-+    where, args = "user_id = ? AND " + condition, [user["id"], *parameters]
-     if status == "processing":
-         where += " AND status IN ('processing', 'attention')"
-     elif status:
-         where += " AND status = ?"
-         args.append(status)
--    total = conn.execute(f"SELECT COUNT(*) FROM orders WHERE {where}", args).fetchone()[0]
-+    if q:
-+        where += " AND (public_id LIKE ? OR product_name LIKE ? OR fields_json LIKE ?)"
-+        args += [f"%{q[:100]}%"] * 3
-+    totals = conn.execute("SELECT COUNT(*) AS n, COALESCE(SUM(status='completed'),0) AS done, "
-+        "COALESCE(SUM(status='failed'),0) AS failed, "
-+        f"COALESCE(SUM(CASE WHEN status='completed' THEN total_micro END),0) AS spent FROM orders WHERE {where}", args).fetchone()
-+    total = totals['n']
-     rows = conn.execute(
-         f"SELECT * FROM orders WHERE {where} ORDER BY id DESC LIMIT ? OFFSET ?", [*args, limit, (page - 1) * limit]
-     ).fetchall()
--    return {"ok": True, "items": [orders.public_view(r) for r in rows], "total": total, "page": page, "limit": limit}
-+    return {"ok": True, "items": [orders.public_view(r) for r in rows], "total": total, "page": page, "limit": limit,
-+            "period": pr.label, "totals": {"done": totals['done'], "failed": totals['failed'], "spent": fmt(totals['spent'])}}
+ def enabled() -> bool:
+@@ -31,8 +40,10 @@
+     return bool(path and Path(path).is_file())
  
  
- @router.get("/orders/{order_id}")
-@@ -402,3 +448,65 @@
-         cryptopay.check_all(conn, config)  # автоплатёж: проверить поступление (не чаще раза в 20 с)
-         row = conn.execute("SELECT * FROM payments WHERE id = ?", (payment_id,)).fetchone()
-     return {"ok": True, "payment": payments.public(conn, config, row)}
-+
-+
-+# Mobile bootstrap: signed session + existing login revocation / blocking rules.
-+@router.get("/mobile-session", include_in_schema=False)
-+def mobile_session(request: Request, conn=Depends(get_conn)):
-+    from .deps import session_user, csrf_token
-+    user = session_user(request, conn)
-+    if user is None:
-+        raise ApiError("Войдите в аккаунт.", "unauthorized", 401)
-+    from . import payments
-+    rate = payments.settings(conn, request.app.state.config)["tjs_rate"]
-+    return {"ok": True, "csrf": csrf_token(request), "login": user["login"], "user_id": user["id"], "tjs_rate": str(rate), "role": user["role"], "status": user["status"]}
-+
-+
-+@router.get("/mobile/home")
-+def mobile_home(request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import dcoin, referrals, popular, payments
-+    # Explicit public projection; no password hashes, supplier keys or bot tokens.
-+    dc = dcoin.summary(conn, user["id"])
-+    return {"ok": True, "dcoin": {k: dc[k] for k in ("balance_text", "worth_micro", "price", "change")},
-+            "referral_percent": referrals.percent(conn), "popular": popular.services(conn), "dcoin_enabled": dc["enabled"],
-+            "markup": str(accounts.markup_for(user, config)), "low_usd": str(payments.settings(conn, config)['low_usd']),
-+            "orders_all": conn.execute('SELECT COUNT(*) FROM orders WHERE user_id=?', (user['id'],)).fetchone()[0],
-+            "tg_channel": config.tg_channel}
-+
-+
-+@router.get("/mobile/notifications")
-+def mobile_notifications(request: Request, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import notify
-+    rows = [dict(r) for r in notify.latest(conn, user["id"])]
-+    return {"ok": True, "unread": notify.unread_count(conn, user["id"]), "items": [{k: row.get(k) for k in ("id", "title", "text", "created_at", "read_at", "link")} for row in rows]}
-+
-+
-+@router.get("/mobile/referrals")
-+def mobile_referrals(request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import referrals
-+    summary = referrals.stats(conn, user["id"])
-+    return {"ok": True, "link": f"{config.base_url}/register?ref={referrals.code_for(conn, user['id'])}",
-+            "friends": [dict(r) for r in summary["friends"]], "rewards": [{"login": r["login"], "order_id": r["public_id"], "earned": fmt(r["amount_micro"]), "created_at": r["created_at"]} for r in summary["rows"]],
-+            "percent": referrals.percent(conn), "stats": {"invited": summary["invited"], "active": summary["active"], "earned": fmt(summary["earned"])}}
-+
-+
-+@router.get("/mobile/logins")
-+def mobile_logins(request: Request, user=Depends(api_user), conn=Depends(get_conn)):
-+    rows = conn.execute("SELECT * FROM logins WHERE user_id = ? ORDER BY id DESC LIMIT 30", (user["id"],)).fetchall()
-+    return {"ok": True, "items": [{k: dict(r).get(k) for k in ("id", "ip", "user_agent", "created_at", "ended_at")} for r in rows]}
-+
-+
-+@router.get("/mobile/categories")
-+def mobile_categories(request: Request, kind: str = "", q: str = Query(default="", max_length=100),
-+                      user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from .money import apply_markup, to_decimal, fmt_unit
-+    _limit(request, "catalog", str(user["id"]))
-+    return {"ok": True, "items": [
-+        {"kind": r["kind"], "category_id": r["category_id"], "category_name": r["category_name"],
-+         "image_url": r["image_url"], "products": r["n"],
-+         "from_price": fmt_unit(apply_markup(to_decimal(str(r["from_price"])), accounts.markup_for(user, config, r["kind"])))}
-+        for r in catalog.categories(conn, kind=kind, q=q)]}
-+
-+
-+from .mobile import router as mobile_router
-+router.include_router(mobile_router)
---- a/donatix/web.py
-+++ b/donatix/web.py
-@@ -51,7 +51,7 @@
- def _safe_next(url: str) -> str:
-     """Куда вернуть после входа/регистрации: только свои страницы кабинета."""
-     url = (url or "").strip()
--    return url if url.startswith("/panel") and not url.startswith("//") and len(url) < 500 else ""
-+    return url if (url.startswith("/panel") or re.fullmatch(r"/api/v1/mobile/oauth/confirm/[A-Za-z0-9_-]{43}", url)) and not url.startswith("//") and len(url) < 500 else ""
+-def register(conn, config, user_id: int, sid: str, device_id: str, token: str):
++def register(conn, config, user_id: int, sid: str, device_id: str, token: str, platform='android'):
+     import hashlib
++    if platform not in ('android', 'ios'):
++        raise ValueError('Unknown push platform')
+     token_hash = hashlib.sha256(token.encode()).hexdigest()
+     with db.tx(conn):
+         # Registration after logout must not resurrect a revoked device.
+@@ -42,12 +53,17 @@
+         conn.execute('DELETE FROM native_push_outbox WHERE device_id IN '
+                      '(SELECT device_id FROM native_push_devices WHERE token_hash=? AND device_id<>?)', (token_hash, device_id))
+         conn.execute('DELETE FROM native_push_devices WHERE token_hash=? AND device_id<>?', (token_hash, device_id))
++        conn.execute('DELETE FROM native_push_platforms WHERE device_id NOT IN (SELECT device_id FROM native_push_devices)')
+         # Old account messages cannot be sent to a device whose owner changes.
+-        conn.execute('DELETE FROM native_push_outbox WHERE device_id=?', (device_id,))
+-        conn.execute('INSERT INTO native_push_devices VALUES (?,?,?,?,?,?) '
++        previous = conn.execute("SELECT d.user_id,d.sid,COALESCE(p.platform,'android') AS platform FROM native_push_devices d "
++                                'LEFT JOIN native_push_platforms p ON p.device_id=d.device_id WHERE d.device_id=?', (device_id,)).fetchone()
++        if previous and (previous['user_id'], previous['sid'], previous['platform']) != (user_id, sid, platform):
++            conn.execute('DELETE FROM native_push_outbox WHERE device_id=?', (device_id,))
++        conn.execute('INSERT INTO native_push_devices (device_id,user_id,sid,token_enc,token_hash,updated_at) VALUES (?,?,?,?,?,?) '
+                      'ON CONFLICT(device_id) DO UPDATE SET user_id=excluded.user_id,sid=excluded.sid,'
+                      'token_enc=excluded.token_enc,token_hash=excluded.token_hash,updated_at=excluded.updated_at',
+                      (device_id, user_id, sid, seal(config.secret_key, token), token_hash, db.now()))
++        conn.execute('INSERT INTO native_push_platforms VALUES (?,?) ON CONFLICT(device_id) DO UPDATE SET platform=excluded.platform', (device_id, platform))
  
  
- # ── Публичные страницы ───────────────────────────────────────
-@@ -392,12 +392,14 @@
-         db.set_setting(conn, f"2fa.{nonce}", json.dumps(
-             {"uid": user["id"], "exp": _time.time() + 300, "tries": 0, "hash": _code_hash(config, nonce, code)}))
-         request.session["pending_2fa"] = nonce
-+        if nxt:
-+            request.session["next"] = nxt
-         notify_admin(config, f"🔐 Код входа в админку: {code}\nДействует 5 минут. IP: {_ip(request)}. "
-                              "Если это не вы — смените пароль.", secret=True)
-         return _redirect("/login/code")
-     request.session["user_id"] = user["id"]
-     _record_login(conn, request, user["id"])
--    return _redirect("/admin" if user["role"] == "admin" else (nxt or "/panel"))
-+    return _redirect(nxt or ("/admin" if user["role"] == "admin" else "/panel"))
+ def unregister(conn, user_id: int, device_id: str):
+@@ -55,6 +71,7 @@
+         if conn.execute('DELETE FROM native_push_devices WHERE device_id=? AND user_id=?',
+                         (device_id, user_id)).rowcount:
+             conn.execute('DELETE FROM native_push_outbox WHERE device_id=?', (device_id,))
++            conn.execute('DELETE FROM native_push_platforms WHERE device_id=?', (device_id,))
  
  
- @router.get("/login/code")
-@@ -447,10 +449,11 @@
-     if not _secrets.compare_digest(_code_hash(config, nonce, code.strip()), pending["hash"]):
-         return render(request, "login_code.html", {"error": "Неверный код."}, 400)
-     conn.execute("DELETE FROM settings WHERE key = ?", (key,))
-+    nxt = _safe_next(request.session.get("next", ""))
-     request.session.clear()
-     request.session["user_id"] = pending["uid"]
-     _record_login(conn, request, pending["uid"])
--    return _redirect("/admin")
-+    return _redirect(nxt or "/admin")
+ def enqueue(conn, user_id: int, notification_id: int):
+@@ -82,8 +99,19 @@
+             # Do not use Application Default Credentials or metadata discovery.
+             _app = firebase_admin.initialize_app(credentials.Certificate(path), name='donatix-native')
+             _app_path = path
+-    messaging.send(messaging.Message(token=token, data={k: str(v) for k, v in payload.items()},
+-        android=messaging.AndroidConfig(priority='high', ttl=__import__('datetime').timedelta(hours=24))), app=_app)
++    data = {k: str(v) for k, v in payload.items() if k != 'platform'}
++    if payload.get('platform') == 'ios':
++        # iOS can show a queued alert after logout. Never put private order/balance text into APNs.
++        message = messaging.Message(token=token, data=data, apns=messaging.APNSConfig(
++            headers={'apns-push-type': 'alert', 'apns-priority': '10',
++                     'apns-expiration': str(int(time.time()) + 86400),
++                     'apns-collapse-id': 'dx-' + str(payload['notification_id'])},
++            payload=messaging.APNSPayload(aps=messaging.Aps(
++                alert=messaging.ApsAlert(title=config.site_name, body='Новое уведомление в Donatix'), sound='default'))))
++    else:
++        message = messaging.Message(token=token, data=data,
++            android=messaging.AndroidConfig(priority='high', ttl=__import__('datetime').timedelta(hours=24)))
++    messaging.send(message, app=_app)
  
  
- @router.get("/auth/google")
---- a/donatix/mobile.py
-+++ b/donatix/mobile.py
-@@ -0,0 +1,562 @@
-+"""Native-client endpoints. All money and fulfillment stay in existing services."""
+ def dispatch(conn, config, sender=send, now=None):
+@@ -98,8 +126,9 @@
+                                 "WHERE id=? AND state IN ('queued','sending') AND next_try<=?",
+                                 (claim, now + 120, candidate['id'], now)).rowcount:
+                 continue
+-            row = conn.execute('SELECT o.*,d.user_id,d.token_enc,n.text,n.link,n.read_at '
++            row = conn.execute("SELECT o.*,d.user_id,d.sid,COALESCE(p.platform,'android') AS platform,d.token_enc,n.text,n.link,n.read_at "
+                 'FROM native_push_outbox o JOIN native_push_devices d ON d.device_id=o.device_id '
++                'LEFT JOIN native_push_platforms p ON p.device_id=d.device_id '
+                 'JOIN notifications n ON n.id=o.notification_id AND n.user_id=d.user_id '
+                 'JOIN logins l ON l.sid=d.sid AND l.user_id=d.user_id AND l.ended_at IS NULL '
+                 'WHERE o.id=?', (candidate['id'],)).fetchone()
+@@ -110,9 +139,13 @@
+             token = unseal(config.secret_key, row['token_enc'])
+             if not token:
+                 raise ValueError('Invalid encrypted token')
+-            sender(config, token, {'user_id': row['user_id'], 'notification_id': row['notification_id'],
+-                                  'title': config.site_name, 'body': row['text'],
+-                                  'link': row['link'] or '/panel/notifications'})
++            payload = {'user_id': row['user_id'], 'notification_id': row['notification_id'],
++                       'platform': row['platform'], 'link': row['link'] or '/panel/notifications'}
++            if row['platform'] == 'ios':
++                payload['binding'] = binding(config, row['sid'], row['user_id'], row['device_id'])
++            else:
++                payload.update(title=config.site_name, body=row['text'])
++            sender(config, token, payload)
+             conn.execute("DELETE FROM native_push_outbox WHERE id=? AND claim=?", (candidate['id'], claim))
+             sent += 1
+         except Exception as exc:
+@@ -121,6 +154,7 @@
+             if invalid:
+                 conn.execute('DELETE FROM native_push_devices WHERE device_id=? AND token_enc=?',
+                              (row['device_id'], row['token_enc']))
++                conn.execute('DELETE FROM native_push_platforms WHERE device_id NOT IN (SELECT device_id FROM native_push_devices)')
+             state = 'failed' if invalid or row['attempts'] >= 10 else 'queued'
+             conn.execute('UPDATE native_push_outbox SET state=?,error=?,next_try=? WHERE id=? AND claim=?',
+                          (state, type(exc).__name__, now + min(3600, 2 ** row['attempts'] * 5), candidate['id'], claim))
+--- v3/donatix/requirements.txt
++++ v4/donatix/requirements.txt
+@@ -9,5 +9,6 @@
+ # Для тестов:
+ # pytest>=8.0
+ 
+-# Explicit service-account file for native Android push; no ambient credentials.
+-firebase-admin>=6.9,<8
++# Explicit service-account file for Android / iOS push; no ambient credentials.
++firebase-admin==7.7.0
++PyJWT[crypto]==2.15.1
+--- v3/donatix/apple_auth.py
++++ v4/donatix/apple_auth.py
+@@ -0,0 +1,249 @@
++"""Native Sign in with Apple. Explicit owner key, bound one-use flow and token revocation."""
 +from __future__ import annotations
 +
 +import hashlib
++import os
 +import secrets
++import threading
 +import time
-+from decimal import Decimal, InvalidOperation
-+from urllib.parse import quote as urlquote
++from pathlib import Path
 +
-+from fastapi import APIRouter, Depends, Header, Request
-+from fastapi.responses import HTMLResponse, RedirectResponse
++import httpx
++import jwt
++from fastapi import APIRouter, Depends, Request
 +from pydantic import BaseModel, Field
 +
-+from . import accounts, catalog, db, orders
-+from .api import ApiError, OrderIn, _limit, api_user, expected_price
++from . import accounts, db, security
++from .api import ApiError, _limit
 +from .deps import csrf_token, get_config, get_conn, session_user
-+from .money import fmt
 +
-+router = APIRouter(prefix="/mobile", tags=["Native app"])
-+
-+
-+@router.get("/public/categories")
-+def public_categories(request: Request, kind: str = "", q: str = "", conn=Depends(get_conn), config=Depends(get_config)):
-+    from .api import mobile_categories
-+    from .web import _guest
-+    _limit(request, "catalog", request.client.host if request.client else "guest")
-+    return mobile_categories(request, kind, q[:100], _guest(), conn, config)
++router = APIRouter(prefix='/apple', tags=['Sign in with Apple'])
++ISSUER = 'https://appleid.apple.com'
++_keys = None
++_keys_until = 0
++_lock = threading.Lock()
 +
 +
-+@router.get("/public/products")
-+def public_products(request: Request, kind: str = "", category_id: str = "", q: str = "", limit: int = 100,
-+                    offset: int = 0, conn=Depends(get_conn), config=Depends(get_config)):
-+    from .api import products
-+    from .web import _guest
-+    _limit(request, "catalog", request.client.host if request.client else "guest")
-+    return products(request, kind, category_id, q[:100], limit, offset, _guest(), conn, config)
++def init(conn):
++    conn.executescript('''
++    CREATE TABLE IF NOT EXISTS apple_flows (
++      id TEXT PRIMARY KEY, challenge TEXT NOT NULL, nonce TEXT NOT NULL,
++      expires INTEGER NOT NULL, user_id INTEGER);
++    CREATE TABLE IF NOT EXISTS apple_identities (
++      subject TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
++      refresh_enc TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active',
++      attempts INTEGER NOT NULL DEFAULT 0, next_try REAL NOT NULL DEFAULT 0, error TEXT);
++    ''')
 +
 +
-+@router.get("/public/products/{product_id}")
-+def public_product(product_id: str, request: Request, conn=Depends(get_conn), config=Depends(get_config)):
-+    from .api import product
-+    from .web import _guest
-+    return product(product_id, request, _guest(), conn, config)
++def settings():
++    return {name: os.environ.get('DONATIX_APPLE_' + name, '')
++            for name in ('CLIENT_ID', 'TEAM_ID', 'KEY_ID', 'PRIVATE_KEY_FILE')}
 +
 +
-+@router.get("/public/steam-gifts/games")
-+def public_gift_games(request: Request, q: str = "", limit: int = 30, conn=Depends(get_conn)):
-+    from .api import steam_gift_games
-+    from .web import _guest
-+    return steam_gift_games(request, q[:100], limit, _guest(), conn)
++def enabled():
++    s = settings()
++    return all(s.values()) and s['CLIENT_ID'] == 'tj.donatix.app' and Path(s['PRIVATE_KEY_FILE']).is_file()
 +
 +
-+@router.get("/public/steam-gifts/games/{appid}")
-+def public_gift_game(appid: int, request: Request, conn=Depends(get_conn), config=Depends(get_config)):
-+    from .api import steam_gift_game
-+    from .web import _guest
-+    return steam_gift_game(appid, request, _guest(), conn, config)
++def client_secret():
++    if not enabled():
++        raise ApiError('Владелец ещё не настроил вход через Apple.', 'apple_disabled', 503)
++    s = settings()
++    now = int(time.time())
++    return jwt.encode({'iss': s['TEAM_ID'], 'iat': now, 'exp': now + 300,
++                       'aud': ISSUER, 'sub': s['CLIENT_ID']},
++                      Path(s['PRIVATE_KEY_FILE']).read_bytes(), algorithm='ES256',
++                      headers={'kid': s['KEY_ID']})
 +
 +
-+@router.get("/config")
-+def configuration(conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import google_auth, sitecfg
-+    return {"ok": True, "site_name": config.site_name,
-+            "google_enabled": google_auth.enabled(config),
-+            "registration_open": sitecfg.registration_open(conn),
-+            "support_contact": config.support_contact, "tg_channel": config.tg_channel,
-+            "version": 2}
++def fetch_keys(transport=None, force=False):
++    global _keys, _keys_until
++    with _lock:
++        if _keys is not None and _keys_until > time.time() and not force:
++            return _keys
++        with httpx.Client(timeout=15, transport=transport, follow_redirects=False) as client:
++            response = client.get(ISSUER + '/auth/keys')
++            response.raise_for_status()
++            keys = response.json()['keys']
++        if not isinstance(keys, list) or not keys:
++            raise ValueError('Empty Apple keys')
++        _keys, _keys_until = keys, time.time() + 3600
++        return keys
 +
 +
-+@router.post("/notifications/read")
-+def notifications_read(request: Request, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import notify
-+    notify.mark_read(conn, user["id"])
-+    return {"ok": True}
-+
-+
-+@router.get("/stats")
-+def stats(request: Request, period: str = "30d", tz_offset: int = 5,
-+          user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import analytics, timez
-+    from datetime import datetime, timezone
-+    _limit(request, "account", str(user["id"]))
-+    choice = timez.user_choice(conn, user["id"])
-+    if choice != "auto":
-+        tz_offset = int(datetime.now(timezone.utc).astimezone(timez.zone(choice)).utcoffset().total_seconds() // 3600)
-+    a = analytics.build(conn, period, user_id=user["id"], tz_hours=max(-12, min(14, tz_offset)))
-+    # Purchase costs and supplier profit are admin-only, including on native devices.
-+    a.pop("profit", None)
-+    for k in ("turnover", "topped"):
-+        a[k] = fmt(a[k])
-+    for row in a["by_kind"]:
-+        row["turnover"] = fmt(row["turnover"])
-+    return {"ok": True, "analytics": a}
-+
-+
-+@router.get("/timezone")
-+def timezone_options(user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import timez
-+    return {"ok": True, "choice": timez.user_choice(conn, user["id"]), "zones": timez.ZONES}
-+
-+
-+class TimezoneIn(BaseModel):
-+    timezone: str = Field(max_length=64)
-+
-+
-+@router.post("/timezone")
-+def timezone_save(body: TimezoneIn, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import timez
-+    if body.timezone != "auto" and not timez.valid(body.timezone):
-+        raise ApiError("Неизвестный часовой пояс.", "invalid_timezone")
-+    timez.set_user_choice(conn, user["id"], body.timezone)
-+    return {"ok": True}
-+
-+
-+@router.get("/dcoin")
-+def dcoin_overview(user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import dcoin
-+    d = dcoin.summary(conn, user["id"])
-+    public = {k: d[k] for k in ("balance_text", "waiting_text", "free", "price", "change", "per_usd",
-+                                "fee_pct", "open", "opens", "enabled")}
-+    public["worth_usd"] = fmt(d["worth_micro"])
-+    public["free_text"] = dcoin.fmt_d(d["free"])
-+    return {"ok": True, "summary": public, "history": dcoin.history(conn, user["id"], 100),
-+            "top": dcoin.top(conn), "days": dcoin.days(conn), "timeframes": list(dcoin.TIMEFRAMES)}
-+
-+
-+@router.get("/dcoin/chart")
-+def dcoin_chart(tf: str = "5s", n: int = 300, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import dcoin
-+    return {"ok": True, **dcoin.candles(conn, tf, min(300, max(12, n)))}
-+
-+
-+class AmountIn(BaseModel):
-+    amount: str = Field(max_length=32)
-+
-+
-+@router.post("/dcoin/exchange")
-+def dcoin_exchange(body: AmountIn, request: Request, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import dcoin
-+    _limit(request, "orders", str(user["id"]))
-+    if not dcoin.enabled(conn):
-+        raise ApiError("D-коины отключены.", "disabled")
++def verify(token, nonce, transport=None):
 +    try:
-+        raw = body.amount.replace(" ", "").replace(",", ".")
-+        if raw.lower() in ("all", "все", "всё"):
-+            units = dcoin.summary(conn, user["id"])["free"]
-+        else:
-+            amount = Decimal(raw)
-+            if not amount.is_finite() or amount <= 0 or amount * 100 != (amount * 100).to_integral_value():
-+                raise ValueError
-+            units = int(amount * 100)
-+        credited = dcoin.exchange(conn, user["id"], units)
-+    except (ValueError, InvalidOperation, OverflowError):
-+        raise ApiError("Введите положительное число D-коинов, до двух знаков после точки.", "invalid_amount") from None
-+    except dcoin.ExchangeError as exc:
-+        raise ApiError(str(exc), "exchange_rejected") from None
-+    return {"ok": True, "credited_usd": fmt(credited), "coins": dcoin.fmt_d(units)}
-+
-+
-+@router.get("/bots")
-+def bot_list(user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import bots, sitecfg
-+    keys = ("id", "username", "admin_ids", "enabled", "running", "warn_count", "disabled_reason", "conflict", "created_at")
-+    return {"ok": True, "items": [{k: b.get(k) for k in keys} for b in bots.listing(conn, user["id"])],
-+            "eligibility": bots.eligibility(conn, user), "max_bots": sitecfg.max_bots(conn),
-+            "ready": bots.runner_alive(conn) and bots.TEMPLATE_DIR.exists() and sitecfg.client_bots_enabled(conn)}
-+
-+
-+class BotIn(BaseModel):
-+    token: str = Field(max_length=256)
-+    admin_ids: str = Field(max_length=300)
-+
-+
-+@router.post("/bots")
-+def bot_create(body: BotIn, request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import bots
-+    from .worker import notify_admin
-+    _limit(request, "orders", str(user["id"]))
-+    elig = bots.eligibility(conn, user)
-+    if not elig["ok"]:
-+        raise ApiError(elig["reason"], "bot_ineligible", 403)
-+    try:
-+        username = bots.check_token(body.token)
-+        bot_id = bots.create(conn, config, user_id=user["id"], token=body.token,
-+                             admin_ids=body.admin_ids, username=username)
-+    except bots.BotError as exc:
-+        raise ApiError(str(exc), "invalid_bot") from None
-+    if bots.RUNNER:
-+        bots.RUNNER.poke()
-+    notify_admin(config, f"🤖 Клиент {user['login']} подключил бота @{username} в конструкторе.")
-+    return {"ok": True, "id": bot_id, "username": username}
-+
-+
-+class BotActionIn(BaseModel):
-+    admin_ids: str = Field(default="", max_length=300)
-+
-+
-+@router.post("/bots/{bot_id}/{action}")
-+def bot_action(bot_id: int, action: str, body: BotActionIn, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import bots
-+    if not bots.owned(conn, bot_id, user["id"]):
-+        raise ApiError("Бот не найден.", "not_found", 404)
-+    try:
-+        if action == "stop":
-+            bots.set_enabled(conn, bot_id, False)
-+        elif action in ("start", "restart"):
-+            ok, why = bots.can_enable(conn, bot_id)
-+            if not ok:
-+                raise ApiError(why, "bot_disabled", 403)
-+            bots.set_enabled(conn, bot_id, True)
-+        elif action == "admins":
-+            bots.update_admins(conn, bot_id, body.admin_ids)
-+        elif action == "delete":
-+            bots.delete(conn, bot_id)
-+        else:
-+            raise ApiError("Неизвестное действие.", "invalid_action")
-+    except bots.BotError as exc:
-+        raise ApiError(str(exc), "invalid_bot") from None
-+    if bots.RUNNER:
-+        bots.RUNNER.poke()
-+    return {"ok": True}
-+
-+
-+@router.get("/keys")
-+def key_list(user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    rows = conn.execute("SELECT id,name,prefix,created_at,last_used_at,revoked_at,key_enc IS NOT NULL AS can_show "
-+                        "FROM api_keys WHERE user_id=? ORDER BY revoked_at IS NOT NULL,id DESC", (user["id"],)).fetchall()
-+    return {"ok": True, "items": [dict(r) for r in rows], "webhook_url": user["webhook_url"] or "",
-+            "webhook_secret": user["webhook_secret"], "base_url": config.base_url, "active": user["status"] == "active"}
-+
-+
-+class KeyIn(BaseModel):
-+    name: str = Field(default="", max_length=64)
-+
-+
-+@router.post("/keys")
-+def key_create(body: KeyIn, request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    _limit(request, "account", str(user["id"]))
-+    try:
-+        key = accounts.create_api_key(conn, user["id"], body.name, config.secret_key)
-+    except accounts.AccountError as exc:
-+        raise ApiError(str(exc), "key_rejected") from None
-+    return {"ok": True, "key": key}
-+
-+
-+@router.post("/keys/{key_id}/{action}")
-+def key_action(key_id: int, action: str, request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    _limit(request, "account", str(user["id"]))
-+    row = conn.execute("SELECT id FROM api_keys WHERE id=? AND user_id=?", (key_id, user["id"])).fetchone()
-+    if row is None:
-+        raise ApiError("Ключ не найден.", "not_found", 404)
-+    if action == "revoke":
-+        accounts.revoke_api_key(conn, user["id"], key_id)
-+        return {"ok": True}
-+    if action in ("reveal", "test"):
-+        key = accounts.reveal_api_key(conn, user["id"], key_id, config.secret_key)
++        header = jwt.get_unverified_header(token)
++        if header.get('alg') != 'RS256' or not header.get('kid'):
++            raise ValueError('Invalid Apple algorithm')
++        key = next((key for key in fetch_keys(transport) if key.get('kid') == header['kid']), None)
 +        if key is None:
-+            raise ApiError("Этот ключ нельзя показать. Создайте новый.", "not_found", 404)
-+        if action == "test":
-+            test_user = accounts.user_by_api_key(conn, key)
-+            return {"ok": True, "valid": test_user is not None and test_user["status"] == "active"}
-+        return {"ok": True, "key": key}
-+    raise ApiError("Неизвестное действие.", "invalid_action")
++            key = next((key for key in fetch_keys(transport, force=True) if key.get('kid') == header['kid']), None)
++        if key is None:
++            raise ValueError('Unknown Apple key')
++        claims = jwt.decode(token, jwt.algorithms.RSAAlgorithm.from_jwk(key), algorithms=['RS256'],
++            audience=settings()['CLIENT_ID'], issuer=ISSUER,
++            options={'require': ['exp', 'iat', 'iss', 'aud', 'sub', 'nonce']})
++        if not secrets.compare_digest(str(claims['nonce']), nonce) or not claims['sub']:
++            raise ValueError('Wrong Apple nonce')
++        return claims
++    except (jwt.PyJWTError, ValueError, KeyError, TypeError):
++        raise ApiError('Apple не подтвердил этот запрос входа. Начните заново.', 'apple_invalid', 403) from None
++    except httpx.HTTPError:
++        raise ApiError('Сервер Apple сейчас недоступен. Попробуйте снова.', 'apple_unavailable', 503) from None
 +
 +
-+class WebhookIn(BaseModel):
-+    url: str = Field(default="", max_length=2048)
-+    rotate: bool = False
-+
-+
-+@router.post("/webhook")
-+def webhook_save(body: WebhookIn, user=Depends(api_user), conn=Depends(get_conn)):
++def exchange(code, nonce, subject, transport=None):
 +    try:
-+        accounts.set_webhook(conn, user["id"], body.url)
-+        if body.rotate:
-+            accounts.rotate_webhook_secret(conn, user["id"])
-+    except accounts.AccountError as exc:
-+        raise ApiError(str(exc), "invalid_webhook") from None
-+    return {"ok": True}
++        with httpx.Client(timeout=15, transport=transport, follow_redirects=False) as client:
++            response = client.post(ISSUER + '/auth/token', data={
++                'client_id': settings()['CLIENT_ID'], 'client_secret': client_secret(),
++                'code': code, 'grant_type': 'authorization_code'})
++            if response.status_code != 200:
++                raise ValueError('Apple rejected code')
++            tokens = response.json()
++        claims = verify(tokens['id_token'], nonce, transport)
++        if claims['sub'] != subject or not tokens.get('refresh_token'):
++            raise ValueError('Apple code belongs to another request')
++        return tokens['refresh_token']
++    except (httpx.HTTPError, ValueError, KeyError, TypeError):
++        raise ApiError('Apple не подтвердил код. Начните вход заново.', 'apple_code_invalid', 403) from None
 +
 +
-+@router.post("/support/link")
-+def support_link(request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import supportbot
-+    _limit(request, "account", str(user["id"]))
-+    code = supportbot.make_link_code(conn, user["id"])
-+    bot = supportbot.bot_username(conn, config)
-+    return {"ok": True, "code": f"DX-{code}" if code else "", "bot": bot,
-+            "url": f"https://t.me/{bot}?start={urlquote(code)}" if code and bot else "",
-+            "minutes": supportbot.LINK_TTL // 60}
++def recent_session(request, conn, uid):
++    from datetime import datetime, timezone
++    row = conn.execute('SELECT created_at FROM logins WHERE sid=? AND user_id=? AND ended_at IS NULL',
++                       (request.session.get('sid', ''), uid)).fetchone()
++    return bool(row and (datetime.now(timezone.utc) - datetime.fromisoformat(row[0]).replace(tzinfo=timezone.utc)).total_seconds() <= 300)
 +
 +
-+@router.post("/support/code")
-+def support_code(request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import supportbot
-+    _limit(request, "account", str(user["id"]))
-+    supportbot.send_code_notification(conn, config, user["id"])
-+    return {"ok": True}
++def require_csrf(request):
++    expected = request.session.get('csrf', '')
++    supplied = request.headers.get('x-csrf-token', '')
++    if not expected or not secrets.compare_digest(expected, supplied):
++        raise ApiError('Обновите сессию и повторите запрос.', 'csrf_invalid', 403)
 +
 +
-+@router.post("/payments/{payment_id}/{action}")
-+def payment_action(payment_id: int, action: str, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import payments
-+    row = conn.execute("SELECT id FROM payments WHERE id=? AND user_id=?", (payment_id, user["id"])).fetchone()
-+    if row is None:
-+        raise ApiError("Заявка не найдена.", "not_found", 404)
-+    try:
-+        if action == "boost":
-+            payments.boost(conn, config, user["id"], payment_id)
-+        elif action == "cancel":
-+            if not payments.cancel(conn, user["id"], payment_id, config):
-+                raise ApiError("Чек уже отправлен — заявку нельзя отменить.", "cannot_cancel", 409)
-+        else:
-+            raise ApiError("Неизвестное действие.", "invalid_action")
-+    except payments.PaymentError as exc:
-+        raise ApiError(str(exc), "payment_rejected") from None
-+    return {"ok": True}
++class Prepare(BaseModel):
++    challenge: str = Field(min_length=64, max_length=64, pattern=r'^[0-9a-f]{64}$')
++    link_account: bool = False
 +
 +
-+@router.get("/gamekeys/{product_id}/regions")
-+def key_regions(product_id: str, request: Request, user=Depends(api_user), conn=Depends(get_conn)):
-+    from . import gamekeys
-+    _limit(request, "catalog", str(user["id"]))
-+    p = catalog.get_product(conn, product_id)
-+    if not p or p["kind"] != "game_key":
-+        raise ApiError("Ключ не найден.", "not_found", 404)
-+    return {"ok": True, **gamekeys.regions(request.app.state.supplier, str(p["supplier_ref"].get("game_id", "")))}
++@router.post('/prepare')
++def prepare(body: Prepare, request: Request, conn=Depends(get_conn)):
++    _limit(request, 'login', request.client.host if request.client else '?')
++    if not enabled():
++        raise ApiError('Вход через Apple ещё не настроен.', 'apple_disabled', 503)
++    user = session_user(request, conn) if body.link_account else None
++    if body.link_account:
++        require_csrf(request)
++    if body.link_account and (not user or not recent_session(request, conn, user['id'])):
++        raise ApiError('Для привязки Apple сначала войдите в аккаунт заново.', 'reauth_required', 403)
++    ticket, nonce = secrets.token_urlsafe(32), secrets.token_hex(32)
++    conn.execute('DELETE FROM apple_flows WHERE expires<?', (int(time.time()),))
++    conn.execute('INSERT INTO apple_flows VALUES (?,?,?,?,?)',
++                 (ticket, body.challenge, nonce, int(time.time()) + 300, user['id'] if user else None))
++    return {'ok': True, 'ticket': ticket, 'nonce': nonce}
 +
 +
-+@router.post("/orders/quote")
-+def order_quote(body: OrderIn, request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    _limit(request, "status", str(user["id"]))
-+    p = catalog.get_product(conn, body.product_id)
-+    if not p:
-+        raise ApiError("Товар недоступен.", "not_found", 404)
-+    try:
-+        qty = orders._clean_quantity(p, body.quantity)
-+        fields = orders._clean_fields(p, body.fields)
-+        if p["kind"] == "steam_gift":
-+            from . import steam_gifts
-+            _, units = steam_gifts.resolve(request.app.state.supplier, fields)
-+        else:
-+            units = orders._units(p, qty, fields)
-+        total = orders.quote(config, user, p, units)["total_micro"]
-+    except orders.OrderError as exc:
-+        raise ApiError(str(exc), exc.code, exc.http_status) from None
-+    except Exception as exc:
-+        from .suppliers import SupplierError
-+        if isinstance(exc, SupplierError):
-+            raise ApiError("Поставщик не ответил. Попробуйте ещё раз.", "supplier_unavailable", 503) from None
-+        raise
-+    return {"ok": True, "total_usd": fmt(total), "units": str(units), "fields": fields,
-+            "balance_usd": fmt(user["balance_micro"])}
-+
-+
-+# Browser OAuth handoff, bound to an app-held verifier. No cookies or tokens in URLs.
-+def _oauth_table(conn):
-+    conn.execute("CREATE TABLE IF NOT EXISTS mobile_oauth (id TEXT PRIMARY KEY, challenge TEXT NOT NULL, "
-+                 "expires INTEGER NOT NULL, user_id INTEGER)")
-+    conn.execute("DELETE FROM mobile_oauth WHERE expires < ?", (int(time.time()),))
-+
-+
-+class OAuthPrepare(BaseModel):
-+    challenge: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
-+
-+
-+@router.post("/oauth/prepare")
-+def oauth_prepare(body: OAuthPrepare, request: Request, conn=Depends(get_conn), config=Depends(get_config)):
-+    from . import google_auth
-+    _limit(request, "login", request.client.host if request.client else "?")
-+    if not google_auth.enabled(config):
-+        raise ApiError("Вход через Google не настроен на сервере.", "disabled", 503)
-+    _oauth_table(conn)
-+    ticket = secrets.token_urlsafe(32)
-+    conn.execute("INSERT INTO mobile_oauth (id,challenge,expires) VALUES (?,?,?)",
-+                 (ticket, body.challenge, int(time.time()) + 600))
-+    return {"ok": True, "ticket": ticket, "url": config.base_url + "/api/v1/mobile/oauth/start/" + ticket}
-+
-+
-+@router.get("/oauth/start/{ticket}")
-+def oauth_start(ticket: str, request: Request, conn=Depends(get_conn)):
-+    _oauth_table(conn)
-+    if not conn.execute("SELECT 1 FROM mobile_oauth WHERE id=?", (ticket,)).fetchone():
-+        raise ApiError("Ссылка входа устарела.", "expired", 410)
-+    request.session["next"] = "/api/v1/mobile/oauth/confirm/" + ticket
-+    return RedirectResponse("/auth/google", status_code=303)
-+
-+
-+@router.get("/oauth/confirm/{ticket}")
-+def oauth_confirmation(ticket: str, request: Request, conn=Depends(get_conn)):
-+    from html import escape
-+    _oauth_table(conn)
-+    user = session_user(request, conn)
-+    if not user:
-+        return RedirectResponse("/login?next=" + urlquote(request.url.path), status_code=303)
-+    if not conn.execute("SELECT 1 FROM mobile_oauth WHERE id=?", (ticket,)).fetchone():
-+        raise ApiError("Ссылка входа устарела.", "expired", 410)
-+    return HTMLResponse('<!doctype html><html lang="ru"><meta name="viewport" content="width=device-width,initial-scale=1">'
-+        '<title>Войти в приложение Donatix</title><body style="font:18px system-ui;padding:24px;max-width:480px;margin:auto">'
-+        '<h1>Войти в приложение Donatix</h1><p>Аккаунт: <b>' + escape(user["email"]) + '</b></p>'
-+        '<p>Подтвердите вход, если вы только что нажали «Войти через Google» в приложении.</p>'
-+        '<form method="post"><input type="hidden" name="csrf" value="' + escape(csrf_token(request)) + '">'
-+        '<button style="padding:16px;background:#5046ee;color:white;border:0;border-radius:12px">Подтвердить вход</button>'
-+        '</form></body></html>')
-+
-+
-+@router.post("/oauth/confirm/{ticket}")
-+async def oauth_confirm(ticket: str, request: Request, conn=Depends(get_conn)):
-+    from .deps import check_csrf
-+    await check_csrf(request)
-+    user = session_user(request, conn)
-+    if not user:
-+        raise ApiError("Войдите в аккаунт.", "unauthorized", 401)
-+    _oauth_table(conn)
-+    if conn.execute("UPDATE mobile_oauth SET user_id=? WHERE id=? AND user_id IS NULL", (user["id"], ticket)).rowcount != 1:
-+        raise ApiError("Ссылка входа устарела или уже использована.", "expired", 410)
-+    return HTMLResponse('<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">'
-+                        '<title>Вход подтверждён</title><h1>Вход подтверждён</h1><p>Вернитесь в приложение Donatix.</p>'
-+                        '<a href="donatix://oauth">Открыть приложение</a>')
-+
-+
-+class OAuthClaim(BaseModel):
-+    ticket: str = Field(max_length=100)
++class Claim(BaseModel):
++    ticket: str = Field(min_length=40, max_length=100)
 +    verifier: str = Field(min_length=43, max_length=128)
++    identity_token: str = Field(min_length=100, max_length=12000)
++    authorization_code: str = Field(min_length=10, max_length=4096)
 +
 +
-+@router.post("/oauth/claim")
-+def oauth_claim(body: OAuthClaim, request: Request, conn=Depends(get_conn)):
-+    _limit(request, "status", "oauth:" + body.ticket)
-+    _oauth_table(conn)
++@router.post('/claim')
++def claim(body: Claim, request: Request, conn=Depends(get_conn), config=Depends(get_config)):
++    _limit(request, 'login', request.client.host if request.client else '?')
++    if not enabled():
++        raise ApiError('Вход через Apple ещё не настроен.', 'apple_disabled', 503)
++    # Consume before exchanging the single-use code. Concurrent replays never create a second session.
 +    with db.tx(conn):
-+        row = conn.execute("SELECT * FROM mobile_oauth WHERE id=?", (body.ticket,)).fetchone()
-+        if not row or not secrets.compare_digest(row["challenge"], hashlib.sha256(body.verifier.encode()).hexdigest()):
-+            raise ApiError("Ссылка входа устарела.", "expired", 410)
-+        if row["user_id"] is None:
-+            return {"ok": True, "pending": True}
-+        user = accounts.get_user(conn, row["user_id"])
-+        if not user or user["status"] == "blocked":
-+            raise ApiError("Аккаунт недоступен.", "blocked", 403)
-+        conn.execute("DELETE FROM mobile_oauth WHERE id=?", (body.ticket,))
-+    from .web import _record_login
-+    request.session.clear()
-+    request.session["user_id"] = user["id"]
-+    _record_login(conn, request, user["id"])
-+    return {"ok": True, "pending": False, "csrf": csrf_token(request)}
-+
-+
-+@router.get('/admin/pricelist')
-+def admin_pricelist(user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    if user['role'] != 'admin':
-+        raise ApiError('Доступ только для администратора.', 'forbidden', 403)
-+    from . import pricelist
-+    return {'ok': True, **pricelist.build(conn, config), 'site': config.base_url,
-+            'name': config.site_name, 'support': config.support_contact}
-+
-+
-+class CartItem(BaseModel):
-+    product_id: str = Field(max_length=64)
-+    count: int = Field(ge=1, le=20)
-+    expected_total_usd: str | None = Field(default=None, max_length=32)
-+
-+
-+class CartIn(BaseModel):
-+    items: list[CartItem] = Field(min_length=1, max_length=20)
-+    fields: dict[str, str] = Field(default_factory=dict)
-+
-+
-+@router.post('/cart/quote')
-+def cart_quote(body: CartIn, request: Request, user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    _limit(request, 'status', str(user['id']))
-+    if sum(i.count for i in body.items) > 20 or len({i.product_id for i in body.items}) != len(body.items):
-+        raise ApiError('За один раз — не больше 20 пакетов.', 'invalid_cart')
-+    result, signature, total = [], None, 0
-+    for i in body.items:
-+        p = catalog.get_product(conn, i.product_id)
-+        if not p or p['kind'] != 'topup' or p['max_qty'] != 1:
-+            raise ApiError('Один из пакетов недоступен.', 'invalid_cart')
-+        current = (p['category_id'], p.get('region') or '')
-+        if signature is not None and current != signature:
-+            raise ApiError('Выберите пакеты одной игры и региона.', 'invalid_cart')
-+        signature = current
-+        try:
-+            orders._clean_fields(p, body.fields)
-+        except orders.OrderError as exc:
-+            raise ApiError(str(exc), exc.code, exc.http_status) from None
-+        price = orders.quote(config, user, p, 1)['total_micro']
-+        result.append({'product_id': i.product_id, 'count': i.count, 'expected_total_usd': fmt(price)})
-+        total += price * i.count
-+    return {'ok': True, 'items': result, 'total_usd': fmt(total), 'balance_usd': fmt(user['balance_micro'])}
-+
-+
-+@router.post('/cart')
-+def cart_create(body: CartIn, request: Request, idempotency_key: str = Header(),
-+                user=Depends(api_user), conn=Depends(get_conn), config=Depends(get_config)):
-+    import json
-+    _limit(request, 'orders', str(user['id']))
-+    if 'api_key_id' in user.keys():
-+        raise ApiError('Корзина доступна после входа в приложение.', 'session_required', 403)
-+    if user['status'] != 'active':
-+        raise ApiError('Аккаунт не активирован.', 'account_inactive', 403)
-+    if not 16 <= len(idempotency_key) <= 100:
-+        raise ApiError('Неверный номер операции.', 'invalid_idempotency')
-+    count = sum(i.count for i in body.items)
-+    if count > 20 or len({i.product_id for i in body.items}) != len(body.items):
-+        raise ApiError('За один раз — не больше 20 пакетов, без повторяющихся строк.', 'invalid_cart')
-+    fingerprint = hashlib.sha256(json.dumps(body.model_dump(), sort_keys=True, ensure_ascii=False).encode()).hexdigest()
-+    conn.execute('CREATE TABLE IF NOT EXISTS mobile_carts (user_id INTEGER NOT NULL, key TEXT NOT NULL, '
-+                 'fingerprint TEXT NOT NULL, PRIMARY KEY(user_id,key))')
++        flow = conn.execute('SELECT * FROM apple_flows WHERE id=?', (body.ticket,)).fetchone()
++        if not flow or flow['expires'] < time.time() or not secrets.compare_digest(
++                flow['challenge'], hashlib.sha256(body.verifier.encode()).hexdigest()):
++            raise ApiError('Запрос входа истёк или уже использован.', 'expired', 410)
++        if flow['user_id'] is not None:
++            require_csrf(request)
++            user = session_user(request, conn)
++            if not user or user['id'] != flow['user_id'] or not recent_session(request, conn, user['id']):
++                raise ApiError('Повторите вход перед привязкой Apple.', 'reauth_required', 403)
++        conn.execute('DELETE FROM apple_flows WHERE id=?', (body.ticket,))
++    claims = verify(body.identity_token, flow['nonce'])
++    known = conn.execute('SELECT user_id FROM apple_identities WHERE subject=?', (claims['sub'],)).fetchone()
++    known_uid = flow['user_id'] if flow['user_id'] is not None else (known['user_id'] if known else None)
++    if known_uid is not None:
++        previous = accounts.get_user(conn, known_uid)
++        if not previous or previous['status'] == 'blocked' or conn.execute(
++                "SELECT 1 FROM account_deletions WHERE user_id=? AND state='waiting'", (known_uid,)).fetchone():
++            raise ApiError('Аккаунт недоступен.', 'blocked', 403)
++    refresh = exchange(body.authorization_code, flow['nonce'], claims['sub'])
++    from . import sitecfg
 +    with db.tx(conn):
-+        record = conn.execute('SELECT fingerprint FROM mobile_carts WHERE user_id=? AND key=?', (user['id'], idempotency_key)).fetchone()
-+        if record and record['fingerprint'] != fingerprint:
-+            raise ApiError('Номер операции уже используется другой корзиной.', 'idempotency_key_reused', 409)
-+        conn.execute('INSERT OR IGNORE INTO mobile_carts VALUES (?,?,?)', (user['id'], idempotency_key, fingerprint))
-+    cart, expected = [], None
-+    for i in body.items:
-+        p = catalog.get_product(conn, i.product_id)
-+        if not p or p['kind'] != 'topup' or p['max_qty'] != 1:
-+            raise ApiError('Один из пакетов недоступен.', 'invalid_cart')
-+        signature = (p['category_id'], p.get('region') or '')
-+        if expected is not None and expected != signature:
-+            raise ApiError('Выберите пакеты одной игры и региона.', 'invalid_cart')
-+        expected = signature
++        if known_uid is not None:
++            previous = accounts.get_user(conn, known_uid)
++            if not previous or previous['status'] == 'blocked':
++                raise ApiError('Аккаунт недоступен.', 'blocked', 403)
++        identity = conn.execute('SELECT * FROM apple_identities WHERE subject=?', (claims['sub'],)).fetchone()
++        if flow['user_id'] is not None:
++            if identity and identity['user_id'] != flow['user_id']:
++                raise ApiError('Этот Apple ID уже привязан к другому аккаунту.', 'apple_already_linked', 409)
++            user = accounts.get_user(conn, flow['user_id'])
++            another = conn.execute('SELECT subject FROM apple_identities WHERE user_id=?', (flow['user_id'],)).fetchone()
++            if another and another['subject'] != claims['sub']:
++                raise ApiError('К аккаунту уже привязан другой Apple ID.', 'apple_already_linked', 409)
++        elif identity:
++            user = accounts.get_user(conn, identity['user_id'])
++        else:
++            email = str(claims.get('email') or '').lower()
++            if claims.get('email_verified') not in (True, 'true') or '@' not in email:
++                raise ApiError('Apple не передал подтверждённую почту.', 'apple_email_required', 403)
++            if conn.execute('SELECT 1 FROM users WHERE lower(email)=?', (email,)).fetchone():
++                raise ApiError('Аккаунт с этой почтой уже существует. Войдите обычным способом и привяжите Apple в меню аккаунта.', 'account_exists', 409)
++            if not sitecfg.registration_open(conn):
++                raise ApiError('Регистрация новых партнёров временно закрыта.', 'registration_closed', 403)
++            uid = accounts.create_user(conn, email=email, login='apple_' + secrets.token_hex(8),
++                password=secrets.token_urlsafe(32), status='pending' if config.require_approval else 'active')
++            user = accounts.get_user(conn, uid)
++        if not user or user['status'] == 'blocked' or conn.execute(
++                "SELECT 1 FROM account_deletions WHERE user_id=? AND state='waiting'", (user['id'],)).fetchone():
++            raise ApiError('Аккаунт недоступен.', 'blocked', 403)
++        conn.execute("INSERT INTO apple_identities (subject,user_id,refresh_enc) VALUES (?,?,?) "
++                     "ON CONFLICT(subject) DO UPDATE SET refresh_enc=excluded.refresh_enc,state='active',attempts=0,next_try=0,error=NULL",
++                     (claims['sub'], user['id'], security.seal(config.secret_key, refresh)))
++    if flow['user_id'] is None:
++        from .web import _finish_login
++        _finish_login(request, conn, user)  # Preserves administrator second-factor checks.
++    return {'ok': True, 'verification': bool(request.session.get('pending_2fa')), 'csrf': csrf_token(request)}
++
++
++def queue_revocation(conn, uid):
++    conn.execute("UPDATE apple_identities SET state='pending',next_try=0 WHERE user_id=? AND state<>'revoked'", (uid,))
++
++
++def revoke_pending(conn, config, transport=None, now=None):
++    now = time.time() if now is None else now
++    if not enabled():
++        return
++    rows = conn.execute("SELECT a.* FROM apple_identities a JOIN account_deletions d ON d.user_id=a.user_id "
++                        "WHERE a.state='pending' AND a.next_try<=? AND d.state='waiting' LIMIT 10", (now,)).fetchall()
++    for row in rows:
++        # A lease prevents two workers sending the same request. Revocation is idempotent at Apple.
++        if not conn.execute("UPDATE apple_identities SET next_try=? WHERE subject=? AND state='pending' AND next_try<=?",
++                            (now + 120, row['subject'], now)).rowcount:
++            continue
 +        try:
-+            orders._clean_fields(p, body.fields)
-+        except orders.OrderError as exc:
-+            raise ApiError(str(exc), exc.code, exc.http_status) from None
-+        cart.extend([(p, expected_price(i.expected_total_usd))] * i.count)
-+    # The remaining items need sufficient balance. Previously created items are
-+    # replayed by their own deterministic idempotency key, never charged again.
-+    remaining = sum(orders.quote(config, user, p, 1)['total_micro'] for n, (p, _) in enumerate(cart)
-+                    if orders._by_client_key(conn, user['id'], f'mcart-{idempotency_key}-{n}') is None)
-+    fresh = accounts.get_user(conn, user['id'])
-+    if fresh['balance_micro'] + orders.ROUNDING_MICRO < remaining:
-+        raise ApiError(f'Недостаточно средств. Для оставшихся пакетов нужно ${fmt(remaining)}.', 'insufficient_balance', 402)
-+    made, error = [], ''
-+    for n, (p, confirmed_price) in enumerate(cart):
-+        try:
-+            order, _ = orders.create_order(conn, config, request.app.state.supplier, accounts.get_user(conn, user['id']),
-+                product_id=p['id'], quantity=1, fields=body.fields,
-+                client_idem_key=f'mcart-{idempotency_key}-{n}', source='panel', expected_total_micro=confirmed_price)
-+            made.append(orders.public_view(order))
-+        except orders.OrderError as exc:
-+            error = str(exc)
-+            break
-+    return {'ok': True, 'items': made, 'requested': count, 'error': error, 'partial': len(made) != count}
++            token = security.unseal(config.secret_key, row['refresh_enc'])
++            if not token:
++                raise ValueError('Invalid encrypted Apple token')
++            with httpx.Client(timeout=15, transport=transport, follow_redirects=False) as client:
++                response = client.post(ISSUER + '/auth/revoke', data={
++                    'client_id': settings()['CLIENT_ID'], 'client_secret': client_secret(),
++                    'token': token, 'token_type_hint': 'refresh_token'})
++                response.raise_for_status()
++            conn.execute("UPDATE apple_identities SET state='revoked',refresh_enc='',error=NULL WHERE subject=?", (row['subject'],))
++        except Exception as exc:
++            conn.execute('UPDATE apple_identities SET attempts=attempts+1,error=?,next_try=? WHERE subject=?',
++                         (type(exc).__name__, now + min(3600, 5 * 2 ** min(10, row['attempts'] + 1)), row['subject']))
+--- v3/donatix/tests/test_ios_features.py
++++ v4/donatix/tests/test_ios_features.py
+@@ -0,0 +1,255 @@
++"""iOS regressions with synthetic Apple keys and blocked external networking."""
++import hashlib
++import json
++import socket
++import time
++
++import httpx
++import jwt
++import pytest
++from cryptography.hazmat.primitives import serialization
++from cryptography.hazmat.primitives.asymmetric import ec, rsa
++
++from conftest import make_client, web_login
++from donatix import account_deletion, accounts, apple_auth, db, native_push, notify, security
 +
 +
-+from .api import AccountCheckIn
++@pytest.fixture(autouse=True)
++def no_network(monkeypatch):
++    def blocked(*args, **kwargs):
++        raise AssertionError('External network is forbidden in these tests')
++    monkeypatch.setattr(socket.socket, 'connect', blocked)
 +
 +
-+@router.post('/public/accounts/check')
-+def public_account_check(body: AccountCheckIn, request: Request, conn=Depends(get_conn)):
-+    from .api import check_account
-+    from .web import _guest
-+    _limit(request, 'status', request.client.host if request.client else 'guest')
-+    return check_account(body, request, _guest(), conn)
++@pytest.fixture
++def apple_keys(monkeypatch, tmp_path):
++    rsa_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
++    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(rsa_key.public_key()))
++    jwk.update(kid='synthetic-test-key', alg='RS256', use='sig')
++    monkeypatch.setattr(apple_auth, 'fetch_keys', lambda *args, **kwargs: [jwk])
++    private = ec.generate_private_key(ec.SECP256R1())
++    key_file = tmp_path / 'synthetic-not-owner-key.p8'
++    key_file.write_bytes(private.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
++    for name, value in {'CLIENT_ID':'tj.donatix.app','TEAM_ID':'TESTTEAM01','KEY_ID':'TESTKEY001','PRIVATE_KEY_FILE':str(key_file)}.items():
++        monkeypatch.setenv('DONATIX_APPLE_' + name, value)
++    def sign(expected_nonce, subject='apple-subject', email='apple@example.com', **overrides):
++        claims = {'iss':apple_auth.ISSUER,'aud':'tj.donatix.app','iat':int(time.time()),'exp':int(time.time())+300,
++                  'sub':subject,'nonce':expected_nonce,'email':email,'email_verified':'true'}
++        claims.update(overrides)
++        return jwt.encode(claims, rsa_key, algorithm='RS256', headers={'kid':jwk['kid']})
++    return sign
 +
 +
-+@router.get('/public/gamekeys/{product_id}/regions')
-+def public_key_regions(product_id: str, request: Request, conn=Depends(get_conn)):
-+    from .web import _guest
-+    return key_regions(product_id, request, _guest(), conn)
---- a/donatix/app.py
-+++ b/donatix/app.py
-@@ -158,6 +158,9 @@
- 
- def create_app(config: Config | None = None, supplier: Supplier | None = None) -> FastAPI:
-     config = config or Config.from_env()
-+    if os.environ.get("DONATIX_PRODUCTION") == "1":
-+        from .production import validate
-+        validate(config)
-     supplier = supplier or make_supplier(config)
-     from . import account_check
-     account_check.configure(config)   # FlashTopup: ник игрока по ID, если ключи есть в .env
---- a/donatix/production.py
-+++ b/donatix/production.py
-@@ -0,0 +1,45 @@
-+"""Production launcher: a real-money server cannot silently use MockSupplier."""
-+from __future__ import annotations
-+import os
-+import sys
-+from urllib.parse import urlparse
-+from .config import Config
++def start(client, headers=None, link=False):
++    verifier = 'v' * 64
++    response = client.post('/api/v1/mobile/apple/prepare', json={
++        'challenge':hashlib.sha256(verifier.encode()).hexdigest(),'link_account':link}, headers=headers or {})
++    assert response.status_code == 200, response.text
++    return response.json(), verifier
 +
 +
-+def validate(config: Config) -> None:
-+    failures = []
-+    if config.supplier != 'fazer' or not config.fazer_api_key:
-+        failures.append('DONATIX_SUPPLIER=fazer и настоящий FAZER_API_KEY')
-+    if len(config.secret_key) < 32 or not os.environ.get('DONATIX_SECRET_KEY'):
-+        failures.append('постоянный DONATIX_SECRET_KEY длиной минимум 32 символа')
-+    origin = urlparse(config.base_url)
-+    if origin.scheme != 'https' or not origin.hostname or origin.username or origin.query or origin.fragment or origin.path not in ('', '/'):
-+        failures.append('DONATIX_BASE_URL с HTTPS без логина и query-параметров')
-+    if not config.cookie_secure:
-+        failures.append('DONATIX_COOKIE_SECURE=1')
-+    if not config.run_worker:
-+        failures.append('DONATIX_RUN_WORKER=1 для выдачи и проверки заказов')
-+    if not config.db_path.is_absolute():
-+        failures.append('абсолютный путь DONATIX_DB')
-+    if not config.db_path.exists() and (not config.admin_email or len(config.admin_password) < 12):
-+        failures.append('DONATIX_ADMIN_EMAIL и пароль минимум 12 символов для первого запуска')
-+    if failures:
-+        raise RuntimeError('Сервер не запущен. Требуется: ' + '; '.join(failures) + '.')
++def claim(client, flow, verifier, token, headers=None):
++    return client.post('/api/v1/mobile/apple/claim', json={
++        'ticket':flow['ticket'],'verifier':verifier,'identity_token':token,
++        'authorization_code':'synthetic-authorization-code'}, headers=headers or {})
 +
 +
-+def main() -> int:
-+    os.environ['DONATIX_PRODUCTION'] = '1'
-+    try:
-+        validate(Config.from_env())
-+    except RuntimeError as exc:
-+        print(str(exc), file=sys.stderr)
-+        return 1
-+    if sys.argv[1:] == ['check-config']:
-+        print('Производственные настройки прошли проверку. Доступность поставщика проверяется отдельно.')
-+        return 0
-+    from .__main__ import main as run
-+    return run(sys.argv[1:] or ['serve'])
++def test_apple_flow_verifies_signature_nonce_and_preserves_user_after_relogin(client, conn, config, apple_keys, monkeypatch):
++    monkeypatch.setattr(apple_auth, 'exchange', lambda *args, **kwargs: 'synthetic-refresh-token')
++    flow, verifier = start(client)
++    token = apple_keys(flow['nonce'])
++    response = claim(client, flow, verifier, token)
++    assert response.status_code == 200 and response.json()['verification'] is False, response.text
++    user = conn.execute('SELECT * FROM users WHERE email=?', ('apple@example.com',)).fetchone()
++    stored = conn.execute('SELECT * FROM apple_identities').fetchone()
++    assert stored['user_id'] == user['id']
++    assert security.unseal(config.secret_key, stored['refresh_enc']) == 'synthetic-refresh-token'
++    assert 'synthetic-refresh-token' not in stored['refresh_enc']
++    assert client.get('/api/v1/mobile-session').json()['user_id'] == user['id']
++    assert claim(client, flow, verifier, token).status_code == 410
++    client.cookies.clear()
++    second, verifier = start(client)
++    assert claim(client, second, verifier, apple_keys(second['nonce'])).status_code == 200
++    assert conn.execute('SELECT COUNT(*) FROM apple_identities').fetchone()[0] == 1
 +
 +
-+if __name__ == '__main__':
-+    raise SystemExit(main())
---- a/donatix/orders.py
-+++ b/donatix/orders.py
-@@ -164,6 +164,7 @@
-     fields: dict[str, Any] | None = None,
-     client_idem_key: str | None = None,
-     source: str = "api",
-+    expected_total_micro: int | None = None,
- ) -> tuple[sqlite3.Row, bool]:
-     """Возвращает (заказ, повтор_ли). Повтор — тот же Idempotency-Key, новый заказ не создан."""
-     if user["status"] != "active":
-@@ -205,6 +206,8 @@
-     if product["kind"] == "topup":
-         _check_account(supplier, product, clean)
-     q = quote(config, user, product, units)
-+    if expected_total_micro is not None and q['total_micro'] != expected_total_micro:
-+        raise OrderError('Цена изменилась. Проверьте новую сумму и подтвердите покупку заново.', 'price_changed', 409)
-     cost_micro = order_total_micro(to_decimal(product["base_price"]), units)
-     ts = db.now()
-     try:
-@@ -660,4 +663,3 @@
-         d["recipient"] = ", ".join(str(v) for v in fields.values() if v not in (None, ""))
-         out.append(d)
-     return out
--
++@pytest.mark.parametrize('overrides', [ {'aud':'different.app'}, {'iss':'https://attacker.example'},
++    {'exp':1}, {'nonce':'different'}, {'sub':''} ])
++def test_apple_invalid_claims_rejected(apple_keys, overrides):
++    token = apple_keys('expected', **overrides)
++    with pytest.raises(Exception) as error:
++        apple_auth.verify(token, 'expected')
++    assert error.value.code == 'apple_invalid'
++
++
++def test_apple_untrusted_signature_and_hmac_algorithm_rejected(apple_keys):
++    other = rsa.generate_private_key(public_exponent=65537,key_size=2048)
++    token = jwt.encode({'nonce':'expected'},other,algorithm='RS256',headers={'kid':'synthetic-test-key'})
++    with pytest.raises(Exception): apple_auth.verify(token,'expected')
++    token = jwt.encode({'nonce':'expected'},'a'*32,algorithm='HS256',headers={'kid':'synthetic-test-key'})
++    with pytest.raises(Exception): apple_auth.verify(token,'expected')
++
++
++def test_apple_flow_wrong_verifier_and_expiration(client, conn, apple_keys, monkeypatch):
++    monkeypatch.setattr(apple_auth,'exchange',lambda *args: pytest.fail('Invalid flow reached code exchange'))
++    flow, verifier = start(client)
++    token = apple_keys(flow['nonce'])
++    assert claim(client,flow,'wrong-verifier'*5,token).status_code == 410
++    conn.execute('UPDATE apple_flows SET expires=0 WHERE id=?',(flow['ticket'],))
++    assert claim(client,flow,verifier,token).status_code == 410
++
++
++def test_apple_email_collision_requires_authenticated_linking(client, conn, apple_keys, monkeypatch):
++    uid,_ = make_client(conn,'existing',balance='0')
++    monkeypatch.setattr(apple_auth,'exchange',lambda *args: 'synthetic-refresh-token')
++    flow,verifier=start(client)
++    assert claim(client,flow,verifier,apple_keys(flow['nonce'],email='existing@example.com')).status_code == 409
++    assert not conn.execute('SELECT 1 FROM apple_identities').fetchone()
++    web_login(client,'existing@example.com','password123')
++    h={'X-CSRF-Token':client.get('/api/v1/mobile-session').json()['csrf']}
++    flow,verifier=start(client,h,link=True)
++    assert claim(client,flow,verifier,apple_keys(flow['nonce'],email='existing@example.com'),h).status_code == 200
++    assert conn.execute('SELECT user_id FROM apple_identities').fetchone()[0] == uid
++    assert client.get('/api/v1/mobile-session').json()['user_id'] == uid
++
++
++def test_apple_link_requires_csrf_live_and_recent_session(client, conn, apple_keys):
++    assert client.post('/api/v1/mobile/apple/prepare',json={'challenge':'a'*64,'link_account':True}).status_code == 403
++    uid,_=make_client(conn,'existing',balance='0')
++    web_login(client,'existing@example.com','password123')
++    assert client.post('/api/v1/mobile/apple/prepare',json={'challenge':'a'*64,'link_account':True}).status_code == 403
++    h={'X-CSRF-Token':client.get('/api/v1/mobile-session').json()['csrf']}
++    conn.execute("UPDATE logins SET created_at='2000-01-01T00:00:00' WHERE user_id=?",(uid,))
++    assert client.post('/api/v1/mobile/apple/prepare',json={'challenge':'a'*64,'link_account':True},headers=h).status_code == 403
++
++
++def test_apple_closed_registration_and_blocked_account(client, conn, apple_keys, monkeypatch):
++    monkeypatch.setattr(apple_auth,'exchange',lambda *args: 'synthetic-refresh-token')
++    monkeypatch.setattr(__import__('donatix.sitecfg',fromlist=['registration_open']),'registration_open',lambda conn:False)
++    flow,verifier=start(client)
++    assert claim(client,flow,verifier,apple_keys(flow['nonce'])).status_code == 403
++    assert not conn.execute('SELECT 1 FROM users WHERE email=?',('apple@example.com',)).fetchone()
++    uid,_=make_client(conn,'blockedapple',balance='0',status='blocked')
++    conn.execute('INSERT INTO apple_identities (subject,user_id,refresh_enc) VALUES (?,?,?)',('apple-subject',uid,'unused'))
++    flow,verifier=start(client)
++    monkeypatch.setattr(apple_auth,'exchange',lambda *args: pytest.fail('Blocked account exchanged Apple code'))
++    assert claim(client,flow,verifier,apple_keys(flow['nonce'])).status_code == 403
++
++
++def test_apple_login_preserves_admin_second_factor(client, conn, config, apple_keys, monkeypatch):
++    admin=conn.execute("SELECT id FROM users WHERE role='admin'").fetchone()[0]
++    conn.execute('INSERT INTO apple_identities (subject,user_id,refresh_enc) VALUES (?,?,?)',('apple-subject',admin,'unused'))
++    monkeypatch.setattr(apple_auth,'exchange',lambda *args: 'synthetic-refresh-token')
++    from donatix import sitecfg, worker
++    monkeypatch.setattr(sitecfg,'admin_2fa_active',lambda *args:True)
++    monkeypatch.setattr(worker,'notify_admin',lambda *args,**kwargs:None)
++    flow,verifier=start(client)
++    response=claim(client,flow,verifier,apple_keys(flow['nonce']))
++    assert response.status_code==200 and response.json()['verification'] is True
++    assert client.get('/api/v1/mobile-session').status_code==401
++    assert not conn.execute('SELECT 1 FROM logins WHERE user_id=? AND ended_at IS NULL',(admin,)).fetchone()
++
++
++def test_apple_code_exchange_verifies_returned_identity_and_explicit_key(apple_keys):
++    sent=[]
++    def handler(request):
++        sent.append(request)
++        assert request.url == apple_auth.ISSUER+'/auth/token'
++        return httpx.Response(200,json={'id_token':apple_keys('nonce'), 'refresh_token':'synthetic-refresh-token'})
++    assert apple_auth.exchange('synthetic-code','nonce','apple-subject',httpx.MockTransport(handler))=='synthetic-refresh-token'
++    assert len(sent)==1
++    with pytest.raises(Exception): apple_auth.exchange('synthetic-code','nonce','different-subject',httpx.MockTransport(handler))
++
++
++def test_apple_deletion_waits_for_revocation_and_retries_without_losing_funds(client, conn, config, apple_keys):
++    uid,_=make_client(conn,'appledelete',balance='0')
++    conn.execute('INSERT INTO apple_identities (subject,user_id,refresh_enc) VALUES (?,?,?)',('subject',uid,security.seal(config.secret_key,'synthetic-refresh-token')))
++    result=account_deletion.request_deletion(conn,config,accounts.get_user(conn,uid))
++    assert result['state']=='waiting' and accounts.get_user(conn,uid)['status']=='blocked'
++    seen=[]
++    def failure(request): return httpx.Response(503)
++    apple_auth.revoke_pending(conn,config,httpx.MockTransport(failure),now=100)
++    row=conn.execute('SELECT * FROM apple_identities').fetchone()
++    assert row['state']=='pending' and row['attempts']==1 and row['error']=='HTTPStatusError'
++    def success(request):
++        seen.append(request)
++        assert request.url == apple_auth.ISSUER+'/auth/revoke'
++        assert b'synthetic-refresh-token' in request.content
++        return httpx.Response(200)
++    apple_auth.revoke_pending(conn,config,httpx.MockTransport(success),now=200)
++    assert len(seen)==1 and conn.execute('SELECT state FROM apple_identities').fetchone()[0]=='revoked'
++    account_deletion.finish_ready(conn,config)
++    assert not accounts.get_user(conn,uid)
++    assert not conn.execute('SELECT 1 FROM apple_identities').fetchone()
++
++
++def test_ios_push_is_visible_generic_and_bound_to_session(client, conn, config):
++    uid,_=make_client(conn,'iospush',balance='0')
++    web_login(client,'iospush@example.com','password123')
++    h={'X-CSRF-Token':client.get('/api/v1/mobile-session').json()['csrf']}
++    result=client.post('/api/v1/mobile/push/register',headers=h,json={
++        'device_id':'i'*32,'token':'synthetic-ios-token-0001','platform':'ios'})
++    assert result.status_code==200 and len(result.json()['binding'])==64
++    notify.notify(conn,None,uid,'PRIVATE ORDER AND BALANCE','/panel/orders')
++    calls=[]
++    native_push.dispatch(conn,config,lambda cfg,token,payload:calls.append(payload),now=100)
++    assert calls[0]['platform']=='ios' and calls[0]['binding']==result.json()['binding']
++    assert 'body' not in calls[0] and 'title' not in calls[0]
++    assert 'PRIVATE' not in json.dumps(calls)
++
++
++def test_repeated_push_registration_preserves_pending_messages(conn, client, config):
++    uid,_=make_client(conn,'pushrepeat',balance='0')
++    web_login(client,'pushrepeat@example.com','password123')
++    sid=conn.execute('SELECT sid FROM logins WHERE user_id=?',(uid,)).fetchone()[0]
++    native_push.register(conn,config,uid,sid,'x'*32,'synthetic-ios-token-0002','ios')
++    notify.notify(conn,None,uid,'pending')
++    native_push.register(conn,config,uid,sid,'x'*32,'synthetic-ios-token-0002','ios')
++    assert conn.execute('SELECT COUNT(*) FROM native_push_outbox').fetchone()[0]==1
++    native_push.register(conn,config,uid,sid,'x'*32,'synthetic-ios-token-0002','android')
++    assert conn.execute('SELECT COUNT(*) FROM native_push_outbox').fetchone()[0]==0
++
++
++def test_ios_platform_migrates_existing_device_table_without_losing_tokens(conn, config):
++    conn.execute('DROP TABLE native_push_devices')
++    conn.execute('CREATE TABLE native_push_devices (device_id TEXT PRIMARY KEY,user_id INTEGER,sid TEXT,token_enc TEXT,token_hash TEXT UNIQUE,updated_at TEXT)')
++    conn.execute("INSERT INTO native_push_devices VALUES ('example',1,'sid','cipher','hash','date')")
++    native_push.init(conn)
++    native_push.init(conn)
++    row=conn.execute('SELECT * FROM native_push_devices').fetchone()
++    assert row['token_enc']=='cipher'
++    assert len(conn.execute('PRAGMA table_info(native_push_devices)').fetchall())==6
++    # Old v3 registrations still work after restoring the previous Python modules.
++    conn.execute("INSERT INTO native_push_devices VALUES ('v3',1,'sid','cipher2','hash2','date')")
++
++
++def test_sender_constructs_apns_alert_without_private_content(config, monkeypatch, tmp_path):
++    import firebase_admin
++    from firebase_admin import credentials, messaging
++    from firebase_admin._messaging_encoder import MessageEncoder
++    path=tmp_path/'synthetic-firebase.json'
++    path.write_text('{}')
++    monkeypatch.setenv('DONATIX_FIREBASE_CREDENTIALS',str(path))
++    monkeypatch.setattr(native_push,'_app',None)
++    monkeypatch.setattr(native_push,'_app_path',None)
++    monkeypatch.setattr(credentials,'Certificate',lambda path:object())
++    monkeypatch.setattr(firebase_admin,'initialize_app',lambda *args,**kwargs:object())
++    sent=[]
++    monkeypatch.setattr(messaging,'send',lambda message,**kwargs:sent.append(message))
++    native_push.send(config,'synthetic-ios-token',{'platform':'ios','user_id':1,'notification_id':2,'binding':'b'*64,'link':'/panel/notifications'})
++    encoded=MessageEncoder().encode(sent[0])
++    assert 'Новое уведомление' in sent[0].apns.payload.aps.alert.body
++    assert sent[0].apns.headers['apns-push-type']=='alert'
++    assert sent[0].apns.headers['apns-priority']=='10'
++    assert 'body' not in sent[0].data and 'platform' not in sent[0].data
++    assert 'apns' in encoded
++    native_push.send(config,'synthetic-android-token',{'platform':'android','body':'Android private text','notification_id':3,'user_id':1})
++    assert sent[1].android.priority=='high' and sent[1].data['body']=='Android private text'
++
++
++def test_disabled_apple_feature_is_not_advertised(client, monkeypatch):
++    for key in ('CLIENT_ID','TEAM_ID','KEY_ID','PRIVATE_KEY_FILE'):
++        monkeypatch.delenv('DONATIX_APPLE_'+key,raising=False)
++    config=client.get('/api/v1/mobile/config').json()
++    assert config['version']==4 and config['platforms']==['android','ios'] and config['apple_enabled'] is False
++    assert client.post('/api/v1/mobile/apple/prepare',json={'challenge':'a'*64}).status_code==503

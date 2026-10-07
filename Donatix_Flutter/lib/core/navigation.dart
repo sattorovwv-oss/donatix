@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'api.dart';
 import '../screens/account.dart';
+import '../screens/admin.dart';
+import '../screens/deletion.dart';
 import '../screens/balance.dart';
 import '../screens/catalog.dart';
 import '../screens/dcoin.dart';
@@ -75,6 +77,11 @@ Future<void> openDonatixLink(
     }
   } else if (path == '/admin/pricelist') {
     screen = PricelistScreen(api: api);
+  } else if (path.startsWith('/admin') &&
+      !path.endsWith('/receipt') &&
+      !path.endsWith('/log') &&
+      !path.endsWith('.csv')) {
+    screen = AdminScreen(api: api, path: uri.toString());
   } else if (path == '/panel/dcoin') {
     screen = DcoinScreen(api: api);
   } else if (path == '/panel/stats') {
@@ -88,6 +95,8 @@ Future<void> openDonatixLink(
     );
   } else if (path == '/panel/support') {
     screen = SupportScreen(api: api);
+  } else if (path == '/panel/account-deletion' || path == '/account-deletion') {
+    screen = DeletionScreen(api: api);
   } else if (path == '/panel/timezone') {
     screen = TimezoneScreen(api: api);
   } else if ([

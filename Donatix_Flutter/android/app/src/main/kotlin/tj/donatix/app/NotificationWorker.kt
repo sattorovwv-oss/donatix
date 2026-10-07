@@ -59,13 +59,34 @@ object NotificationSession {
         if (p.getInt("userId", 0) != userId) p.edit().clear().apply()
         storeCookie(c, cookie)
         p.edit().putString("origin", origin).putInt("userId", userId).apply()
+        NativePush.register(c)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val work = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES).setConstraints(constraints).build()
         WorkManager.getInstance(c).enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, work)
         if (!p.contains("watermark")) WorkManager.getInstance(c).enqueueUniqueWork("donatix-inbox-seed", ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<NotificationWorker>().setConstraints(constraints).build())
     }
+    @Synchronized
+    fun show(c: Context, uid: Int, id: Long, title: String, body: String, link: String) {
+        val p = prefs(c)
+        if (p.getInt("userId", 0) != uid) return
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val seen = (p.getStringSet("shown_ids", emptySet()) ?: emptySet()).toMutableSet()
+        if (seen.contains(id.toString())) return
+        if (Build.VERSION.SDK_INT >= 26) c.getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel("donatix-orders", "Заказы и баланс Donatix", NotificationManager.IMPORTANCE_DEFAULT))
+        val intent = Intent(c, MainActivity::class.java).putExtra("donatix_link", link)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        val pending = PendingIntent.getActivity(c, id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notification = NotificationCompat.Builder(c, "donatix-orders").setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title).setContentText(body).setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pending).setAutoCancel(true).build()
+        NotificationManagerCompat.from(c).notify(id.toInt(), notification)
+        seen.add(id.toString())
+        p.edit().putStringSet("shown_ids", seen.sortedByDescending { it.toLongOrNull() ?: 0 }.take(200).toSet()).apply()
+    }
     fun stop(c: Context) {
+        NativePush.stop(c)
         WorkManager.getInstance(c).cancelUniqueWork(WORK)
         WorkManager.getInstance(c).cancelUniqueWork("donatix-inbox-seed")
         prefs(c).edit().clear().apply()
@@ -109,14 +130,8 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
                 val id = row.getLong("id")
                 latest = maxOf(latest, id)
                 if (!initialized || id <= before || !allowed || !row.isNull("read_at")) continue
-                val intent = Intent(c, MainActivity::class.java).putExtra("donatix_link", row.optString("link", "/panel/notifications"))
-                    .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                val pending = PendingIntent.getActivity(c, id.toInt(), intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-                val body = row.optString("text", "")
-                val notification = NotificationCompat.Builder(c, "donatix-orders").setSmallIcon(R.drawable.ic_notification)
-                    .setContentTitle(row.optString("title", "").ifBlank { "Donatix" }).setContentText(body)
-                    .setStyle(NotificationCompat.BigTextStyle().bigText(body)).setContentIntent(pending).setAutoCancel(true).build()
-                NotificationManagerCompat.from(c).notify(id.toInt(), notification)
+                NotificationSession.show(c, uid, id, row.optString("title", "").ifBlank { "Donatix" },
+                    row.optString("text", ""), row.optString("link", "/panel/notifications"))
             }
             if (p.getInt("userId", 0) == uid) p.edit().putLong("watermark", latest).apply()
             Result.success()

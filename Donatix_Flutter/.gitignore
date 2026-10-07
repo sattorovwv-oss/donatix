@@ -8,3 +8,26 @@ android/key.properties
 *.jks
 *.keystore
 .env
+
+# Owner secrets and local iOS outputs
+*.keystore
+*.jks
+*.p12
+*.mobileprovision
+*.p8
+password.txt
+Donatix_Signing_Key.zip
+**/GoogleService-Info.plist
+**/google-services.json
+**/key.properties
+**/.dart_tool/
+**/build/
+**/Pods/
+**/.symlinks/
+**/Generated.xcconfig
+**/flutter_export_environment.sh
+**/Flutter/ephemeral/
+**/GeneratedPluginRegistrant.*
+**/xcuserdata/
+**/__pycache__/
+**/.pytest_cache/

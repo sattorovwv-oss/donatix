@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,7 +11,19 @@ class NativeNotifications {
   static const channel = MethodChannel('tj.donatix.app/native');
   bool enabled = false;
   String? configured;
+  Map<String, dynamic> push = {};
   NativeNotifications(this.api);
+  Future<void> refreshStatus() async {
+    try {
+      final d = await channel.invokeMapMethod<String, dynamic>('pushStatus');
+      push = d ?? {};
+    } on MissingPluginException {
+      push = {};
+    } on PlatformException {
+      push = {};
+    }
+  }
+
   Future<void> synchronize() async {
     enabled =
         (await SharedPreferences.getInstance()).getBool(
@@ -30,6 +43,7 @@ class NativeNotifications {
         await channel.invokeMethod<void>('stopNotifications');
       }
       configured = signature;
+      await refreshStatus();
     } on MissingPluginException {
       /* Other targets keep the in-app inbox. */
     } on PlatformException {
@@ -38,6 +52,18 @@ class NativeNotifications {
   }
 
   Future<bool> setEnabled(bool value) async {
+    if (!value && api.userId != 0) {
+      await refreshStatus();
+      try {
+        if (push['deviceId'] != null) {
+          await api.post('/api/v1/mobile/push/unregister', {
+            'device_id': push['deviceId'],
+          });
+        }
+      } catch (_) {
+        /* Token is also invalidated by the native bridge. */
+      }
+    }
     if (value) {
       try {
         value =
@@ -63,7 +89,7 @@ class NativeNotifications {
     try {
       await channel.invokeMethod<void>('stopNotifications');
     } on MissingPluginException {
-      /* No Android worker. */
+      /* The target does not expose native notifications. */
     } on PlatformException {
       /* The session is also revoked on the server during logout. */
     }
@@ -90,12 +116,39 @@ class NotificationPreferences extends StatefulWidget {
 
 class _NotificationPreferencesState extends State<NotificationPreferences> {
   bool busy = false;
+  Timer? statusTimer;
+  @override
+  void initState() {
+    super.initState();
+    statusTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+      await widget.service.refreshStatus();
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    statusTimer?.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) => SwitchListTile(
     contentPadding: EdgeInsets.zero,
-    title: const Text('Фоновые уведомления'),
-    subtitle: const Text(
-      'Android периодически проверяет заказы и пополнения. Проверка может задерживаться из-за энергосбережения.',
+    title: const Text('Уведомления о заказах и балансе'),
+    subtitle: Text(
+      widget.service.push['server'] == true &&
+              widget.service.push['registered'] == true
+          ? Platform.isIOS
+                ? 'Push через APNs/FCM подключён. Подробности доступны в приложении.'
+                : 'FCM подключён. Также включена резервная фоновая проверка.'
+          : widget.service.push['firebase'] == true
+          ? Platform.isIOS
+                ? 'Подключение APNs/FCM. Без push список обновляется при открытии приложения.'
+                : 'Регистрация FCM выполняется в фоне. До подключения доступна периодическая проверка.'
+          : Platform.isIOS
+          ? 'Список обновляется при открытии. Для push владелец должен подключить Firebase и APNs.'
+          : 'Доступна периодическая проверка. Для FCM владелец должен подключить свой Firebase-проект.',
     ),
     value: widget.service.enabled,
     onChanged: busy
@@ -105,7 +158,10 @@ class _NotificationPreferencesState extends State<NotificationPreferences> {
             try {
               final on = await widget.service.setEnabled(value);
               if (context.mounted && value && !on) {
-                message(context, 'Разрешите уведомления в настройках Android.');
+                message(
+                  context,
+                  'Разрешите уведомления в настройках ${Platform.isIOS ? 'iOS' : 'Android'}.',
+                );
               }
             } catch (e) {
               if (context.mounted) message(context, e);

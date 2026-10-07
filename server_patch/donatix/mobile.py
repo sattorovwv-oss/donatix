@@ -5,6 +5,7 @@ import hashlib
 import secrets
 import time
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 from urllib.parse import quote as urlquote
 
 from fastapi import APIRouter, Depends, Header, Request
@@ -17,6 +18,40 @@ from .deps import csrf_token, get_config, get_conn, session_user
 from .money import fmt
 
 router = APIRouter(prefix="/mobile", tags=["Native app"])
+
+
+class PushIn(BaseModel):
+    device_id: str = Field(min_length=32, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+    token: str = Field(min_length=20, max_length=4096)
+    platform: Literal['android', 'ios'] = 'android'
+
+
+class PushRemove(BaseModel):
+    device_id: str = Field(min_length=32, max_length=80, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+@router.get('/push/status')
+def push_status(user=Depends(api_user)):
+    from . import native_push
+    return {'ok':True,'configured':native_push.enabled()}
+
+
+@router.post('/push/register')
+def push_register(body:PushIn,request:Request,user=Depends(api_user),conn=Depends(get_conn),config=Depends(get_config)):
+    from . import native_push
+    _limit(request,'account',str(user['id']))
+    if not request.session.get('sid') or request.session.get('user_id') != user['id']:
+        raise ApiError('Войдите в мобильное приложение.', 'session_required',403)
+    native_push.register(conn,config,user['id'],request.session['sid'],body.device_id,body.token,body.platform)
+    return {'ok':True,'configured':native_push.enabled(),
+            'binding':native_push.binding(config,request.session['sid'],user['id'],body.device_id)}
+
+
+@router.post('/push/unregister')
+def push_unregister(body:PushRemove,user=Depends(api_user),conn=Depends(get_conn)):
+    from . import native_push
+    native_push.unregister(conn,user['id'],body.device_id)
+    return {'ok':True}
 
 
 @router.get("/public/categories")
@@ -59,12 +94,14 @@ def public_gift_game(appid: int, request: Request, conn=Depends(get_conn), confi
 
 @router.get("/config")
 def configuration(conn=Depends(get_conn), config=Depends(get_config)):
-    from . import google_auth, sitecfg
+    from . import google_auth, sitecfg, apple_auth
     return {"ok": True, "site_name": config.site_name,
             "google_enabled": google_auth.enabled(config),
+            "apple_enabled": apple_auth.enabled(),
             "registration_open": sitecfg.registration_open(conn),
             "support_contact": config.support_contact, "tg_channel": config.tg_channel,
-            "version": 2}
+            "version": 4, "platforms": ["android", "ios"],
+            "features": ["account_deletion", "native_fcm", "ios_apns", "apple_login", "price_confirmation", "cart_recovery"]}
 
 
 @router.post("/notifications/read")

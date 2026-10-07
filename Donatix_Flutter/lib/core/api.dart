@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter/services.dart';
 import 'package:decimal/decimal.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:html/parser.dart' as html;
@@ -136,6 +137,15 @@ class DonatixApi {
     status = '';
     csrf = '';
     await storage.delete(key: 'donatix_session');
+    try {
+      await const MethodChannel(
+        'tj.donatix.app/native',
+      ).invokeMethod<void>('clearAppleCredential');
+    } on MissingPluginException {
+      /* Android uses its existing login providers. */
+    } on PlatformException {
+      /* Server logout still revokes the session. */
+    }
     await onSessionChanged?.call();
   }
 

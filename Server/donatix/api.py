@@ -467,7 +467,8 @@ def mobile_home(request: Request, user=Depends(api_user), conn=Depends(get_conn)
     from . import dcoin, referrals, popular, payments
     # Explicit public projection; no password hashes, supplier keys or bot tokens.
     dc = dcoin.summary(conn, user["id"])
-    return {"ok": True, "dcoin": {k: dc[k] for k in ("balance_text", "worth_micro", "price", "change")},
+    return {"ok": True, "dcoin": {**{k: dc[k] for k in ("balance_text", "worth_micro", "price", "change")},
+                                    "worth_usd": fmt(dc['worth_micro'])},
             "referral_percent": referrals.percent(conn), "popular": popular.services(conn), "dcoin_enabled": dc["enabled"],
             "markup": str(accounts.markup_for(user, config)), "low_usd": str(payments.settings(conn, config)['low_usd']),
             "orders_all": conn.execute('SELECT COUNT(*) FROM orders WHERE user_id=?', (user['id'],)).fetchone()[0],
@@ -509,4 +510,6 @@ def mobile_categories(request: Request, kind: str = "", q: str = Query(default="
 
 
 from .mobile import router as mobile_router
+from .apple_auth import router as apple_router
+mobile_router.include_router(apple_router)
 router.include_router(mobile_router)

@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Удаление аккаунта — Donatix{% endblock %}
+{% block content %}
+<main class="wrap" style="max-width:680px;padding-top:32px;padding-bottom:48px">
+  <h1>Удаление аккаунта Donatix</h1>
+  <p>Здесь можно удалить аккаунт и связанные данные без установки приложения.</p>
+  {% if done %}<div class="flash ok">{% if done == 'completed' %}Аккаунт и данные удалены.{% else %}Заявка принята. Вход, API и боты отключены. После завершения заказов и возврата остатка данные удалятся автоматически. Для расчётов обратитесь в поддержку.{% endif %}</div>
+  {% elif user %}<div class="card">
+    <p>Удалятся профиль, история входов, ключи API, боты, уведомления, чеки, заказы и история операций. D-коины будут утрачены. Действие необратимо.</p>
+    {% for reason in reasons %}<div class="flash warn">{{ reason }}</div>{% endfor %}
+    <form method="post"><input type="hidden" name="csrf" value="{{ csrf }}">
+      <label for="password">Пароль (или подтвердите свежим входом через Google)</label><input id="password" type="password" name="password" autocomplete="current-password">
+      <label for="confirmation">Введите УДАЛИТЬ</label><input id="confirmation" name="confirmation" required autocomplete="off">
+      <button class="btn danger" style="margin-top:16px">Удалить аккаунт и данные</button>
+    </form>
+  </div>{% else %}<a class="btn primary" href="/login?next=/account-deletion">Войти для удаления аккаунта</a>{% endif %}
+  <p style="margin-top:20px">Поддержка: {{ support_contact }}. Удаление из резервных копий выполняет владелец сервиса согласно опубликованной политике хранения.</p>
+</main>
+{% endblock %}

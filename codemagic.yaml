@@ -1,50 +1,152 @@
 workflows:
   android-check:
-    name: Donatix Android checks and installable APK
-    working_directory: Donatix_Flutter
+    name: Donatix Android APK for device acceptance
     instance_type: mac_mini_m2
     max_build_duration: 45
     environment:
       flutter: 3.35.4
-      java: 17
+      java: '17'
+      vars: &id001
+        DONATIX_URL: https://donatix.tj
     scripts:
-      - name: Get dependencies
-        script: flutter pub get
-      - name: Analyze
-        script: flutter analyze
-      - name: Build APK for device acceptance
-        script: flutter build apk --debug --dart-define=DONATIX_URL=https://donatix.tj
+    - name: Optional owner Firebase settings
+      script: 'set -euo pipefail
+
+        python3 tool/configure_ci.py android'
+    - &id002
+      name: Dependencies and analysis
+      script: 'set -euo pipefail
+
+        flutter pub get
+
+        flutter analyze'
+    - name: Build installable APK
+      script: 'set -euo pipefail
+
+        flutter build apk --debug --dart-define=DONATIX_URL="$DONATIX_URL"'
     artifacts:
-      - Donatix_Flutter/build/app/outputs/flutter-apk/app-debug.apk
-  android-release:
-    name: Donatix signed APK and Play AAB
+    - Donatix_Flutter/build/app/outputs/flutter-apk/app-debug.apk
     working_directory: Donatix_Flutter
+  android-release:
+    name: Donatix signed Android APK and Play AAB
     instance_type: mac_mini_m2
     max_build_duration: 60
     environment:
       flutter: 3.35.4
-      java: 17
+      java: '17'
+      vars: *id001
       android_signing:
-        - donatix_upload
+      - donatix_upload
     scripts:
-      - name: Configure owner signing key
-        script: |
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          fields = {'storeFile': os.environ['CM_KEYSTORE_PATH'], 'storePassword': os.environ['CM_KEYSTORE_PASSWORD'], 'keyAlias': os.environ['CM_KEY_ALIAS'], 'keyPassword': os.environ['CM_KEY_PASSWORD']}
-          def escape(s):
-              return s.replace('\\', '\\\\').replace('\n', '\\n').replace('\r', '\\r').replace('=', '\\=').replace(':', '\\:')
-          Path('android/key.properties').write_text('\n'.join(k + '=' + escape(v) for k, v in fields.items()))
-          PY
-      - name: Dependencies and analysis
-        script: |
-          flutter pub get
-          flutter analyze
-      - name: Signed APK
-        script: flutter build apk --release --dart-define=DONATIX_URL=https://donatix.tj
-      - name: Google Play bundle
-        script: flutter build appbundle --release --dart-define=DONATIX_URL=https://donatix.tj
+    - name: Configure protected owner inputs
+      script: 'set -euo pipefail
+
+        python3 tool/configure_ci.py android --release
+
+        python3 tool/release_preflight.py --platform android --check-server'
+    - *id002
+    - name: Signed APK
+      script: 'set -euo pipefail
+
+        flutter build apk --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 4 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
+    - name: Google Play AAB
+      script: 'set -euo pipefail
+
+        flutter build appbundle --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 4 ))}"
+        --dart-define=DONATIX_URL="$DONATIX_URL"'
     artifacts:
-      - Donatix_Flutter/build/app/outputs/flutter-apk/app-release.apk
-      - Donatix_Flutter/build/app/outputs/bundle/release/app-release.aab
+    - Donatix_Flutter/build/app/outputs/flutter-apk/app-release.apk
+    - Donatix_Flutter/build/app/outputs/bundle/release/app-release.aab
+    working_directory: Donatix_Flutter
+  ios-check:
+    name: Donatix iOS simulator build and native checks
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      flutter: 3.35.4
+      xcode: latest
+      cocoapods: default
+      vars: *id001
+    scripts:
+    - name: Optional owner Firebase settings
+      script: 'set -euo pipefail
+
+        python3 tool/configure_ci.py ios'
+    - *id002
+    - name: Build simulator app
+      script: 'set -euo pipefail
+
+        flutter build ios --simulator --debug --dart-define=DONATIX_URL="$DONATIX_URL"'
+    - name: Native iOS security checks
+      script: 'set -euo pipefail
+
+        python3 - <<''PY''
+
+        import json, subprocess
+
+        from pathlib import Path
+
+        devices = json.loads(subprocess.check_output([''xcrun'',''simctl'',''list'',''devices'',''available'',''--json'']))[''devices'']
+
+        udid = next(d[''udid''] for runtime, group in devices.items() if ''iOS'' in runtime for d in group if d.get(''isAvailable'')
+        and d[''name''].startswith(''iPhone''))
+
+        subprocess.run([''xcrun'',''simctl'',''boot'',udid], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        subprocess.run([''xcrun'',''simctl'',''bootstatus'',udid,''-b''], check=True)
+
+        subprocess.run([''xcodebuild'',''-workspace'',''ios/Runner.xcworkspace'',''-scheme'',''Runner'',''-configuration'',''Debug'',''-destination'',''id=''+udid,''-resultBundlePath'',''build/ios/native-checks.xcresult'',''CODE_SIGNING_ALLOWED=NO'',''test''],
+        check=True)
+
+        PY'
+    - name: Package simulator artifact
+      script: 'set -euo pipefail
+
+        ditto -c -k --sequesterRsrc --keepParent build/ios/iphonesimulator/Runner.app build/ios/Donatix-Simulator.zip'
+    artifacts:
+    - Donatix_Flutter/build/ios/Donatix-Simulator.zip
+    - Donatix_Flutter/build/ios/native-checks.xcresult
+    - Donatix_Flutter/ios/Podfile.lock
+    - /tmp/xcodebuild_logs/*.log
+    working_directory: Donatix_Flutter
+  ios-release:
+    name: Donatix signed iPhone IPA for TestFlight and App Store
+    instance_type: mac_mini_m2
+    max_build_duration: 75
+    environment:
+      flutter: 3.35.4
+      xcode: latest
+      cocoapods: default
+      vars: *id001
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: tj.donatix.app
+    scripts:
+    - name: Configure protected owner inputs
+      script: 'set -euo pipefail
+
+        python3 tool/configure_ci.py ios --release
+
+        python3 tool/release_preflight.py --platform ios --check-server'
+    - *id002
+    - name: Install iOS pods
+      script: 'set -euo pipefail
+
+        cd ios
+
+        pod install'
+    - name: Apply owner signing profiles
+      script: 'set -euo pipefail
+
+        xcode-project use-profiles'
+    - name: Build signed IPA
+      script: 'set -euo pipefail
+
+        flutter build ipa --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 4 ))}" --export-options-plist=/Users/builder/export_options.plist
+        --dart-define=DONATIX_URL="$DONATIX_URL"'
+    artifacts:
+    - Donatix_Flutter/build/ios/ipa/*.ipa
+    - Donatix_Flutter/build/ios/archive/*.xcarchive
+    - Donatix_Flutter/ios/Podfile.lock
+    - /tmp/xcodebuild_logs/*.log
+    working_directory: Donatix_Flutter

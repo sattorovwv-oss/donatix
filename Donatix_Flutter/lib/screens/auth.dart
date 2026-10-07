@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:dio/dio.dart';
 import '../core/api.dart';
 import '../widgets/ui.dart';
@@ -9,6 +11,7 @@ import 'document.dart';
 import 'catalog.dart';
 import 'management.dart';
 import '../core/checkout.dart';
+import '../core/apple_login.dart';
 
 class AuthScreen extends StatefulWidget {
   final DonatixApi api;
@@ -120,6 +123,32 @@ class _AuthScreenState extends State<AuthScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> apple() async {
+    if (busy) return;
+    if (register && !accepted) {
+      message(context, 'Примите условия и политику конфиденциальности.');
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      final done = await AppleSignIn.authenticate(widget.api);
+      if (!mounted) return;
+      if (done) {
+        widget.onDone();
+      } else {
+        setState(() => verification = true);
+      }
+    } on PlatformException catch (e) {
+      if (mounted && e.code != 'apple_canceled') {
+        message(context, e.message ?? 'Не удалось войти через Apple.');
+      }
+    } catch (e) {
+      if (mounted) message(context, e);
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   bool register = false,
       busy = false,
       verification = false,
@@ -215,6 +244,20 @@ class _AuthScreenState extends State<AuthScreen> with WidgetsBindingObserver {
                   Surface(
                     child: Column(
                       children: [
+                        if (!verification &&
+                            Platform.isIOS &&
+                            config?['apple_enabled'] == true) ...[
+                          FilledButton.icon(
+                            onPressed: busy ? null : apple,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: Colors.black,
+                              foregroundColor: Colors.white,
+                            ),
+                            icon: const Icon(Icons.apple),
+                            label: const Text('Войти с Apple'),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
                         if (!verification &&
                             config?['google_enabled'] == true) ...[
                           OutlinedButton.icon(

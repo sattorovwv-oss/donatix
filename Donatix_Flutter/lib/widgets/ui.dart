@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../core/api.dart';
+import 'site_design.dart';
 
 const accent = Color(0xff4f46e5);
 const kinds = <String, String>{
@@ -48,15 +49,24 @@ class Surface extends StatelessWidget {
     this.padding = const EdgeInsets.all(18),
   });
   @override
-  Widget build(BuildContext context) => Container(
-    padding: padding,
-    margin: const EdgeInsets.only(bottom: 14),
-    decoration: BoxDecoration(
-      color: Theme.of(context).colorScheme.surface,
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Theme.of(context).dividerColor),
+  Widget build(BuildContext context) => SiteReveal(
+    child: Container(
+      padding: padding,
+      margin: const EdgeInsets.only(bottom: 14),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: .04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: child,
     ),
-    child: child,
   );
 }
 

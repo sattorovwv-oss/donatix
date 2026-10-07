@@ -183,7 +183,10 @@ class _DocumentScreenState extends State<DocumentScreen> {
     ].contains(tag)) {
       return const SizedBox.shrink();
     }
-    final children = n.nodes.map(node).toList();
+    final children = n.nodes
+        .where((x) => x is! dom.Text || x.text.trim().isNotEmpty)
+        .map(node)
+        .toList();
     Widget result;
     if (n.id == 'job' && job != null) {
       return Surface(
@@ -391,6 +394,8 @@ class NativeForm extends StatefulWidget {
   final String sourcePath;
   final Widget Function(dom.Node) render;
   final Future<void> Function([Response<dynamic>?]) completed;
+  final Widget Function(dom.Element, List<Widget>)? layout;
+  final bool bare;
   const NativeForm({
     super.key,
     required this.api,
@@ -398,6 +403,8 @@ class NativeForm extends StatefulWidget {
     required this.sourcePath,
     required this.render,
     required this.completed,
+    this.layout,
+    this.bare = false,
   });
   @override
   State<NativeForm> createState() => _NativeFormState();
@@ -679,15 +686,34 @@ class _NativeFormState extends State<NativeForm> {
                 child: Text(n.text.trim()),
               );
       }
+      final action = n.attributes.containsKey('disabled') || busy
+          ? null
+          : () => submit(n);
+      final label = busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : Text(n.text.trim().isEmpty ? 'Сохранить' : n.text.trim());
+      final button =
+          n.classes.contains('primary') || n.classes.contains('danger')
+          ? FilledButton(
+              onPressed: action,
+              style: n.classes.contains('danger')
+                  ? FilledButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.error,
+                      foregroundColor: Theme.of(context).colorScheme.onError,
+                    )
+                  : null,
+              child: label,
+            )
+          : OutlinedButton(onPressed: action, child: label);
       return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: BusyButton(
-          n.text.trim().isEmpty ? 'Сохранить' : n.text.trim(),
-          busy: busy,
-          onPressed: n.attributes.containsKey('disabled')
-              ? null
-              : () => submit(n),
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: n.classes.contains('block')
+            ? SizedBox(width: double.infinity, child: button)
+            : button,
       );
     }
     if (n.localName == 'label' && n.querySelector('input,select') == null) {
@@ -697,20 +723,36 @@ class _NativeFormState extends State<NativeForm> {
         ['a', 'h1', 'h2', 'h3', 'p', 'pre'].contains(n.localName)) {
       return widget.render(n);
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: n.nodes.map(node).toList(),
-    );
+    final children = n.nodes
+        .where((x) => x is! dom.Text || x.text.trim().isNotEmpty)
+        .map(node)
+        .toList();
+    return widget.layout?.call(n, children) ??
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: children,
+        );
   }
 
   @override
-  Widget build(BuildContext context) => Surface(
-    child: Form(
-      key: formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: widget.form.nodes.map(node).toList(),
-      ),
-    ),
+  Widget build(BuildContext context) =>
+      widget.bare ? content() : Surface(child: content());
+  Widget content() => Form(
+    key: formKey,
+    child:
+        widget.layout?.call(
+          widget.form,
+          widget.form.nodes
+              .where((x) => x is! dom.Text || x.text.trim().isNotEmpty)
+              .map(node)
+              .toList(),
+        ) ??
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: widget.form.nodes
+              .where((x) => x is! dom.Text || x.text.trim().isNotEmpty)
+              .map(node)
+              .toList(),
+        ),
   );
 }

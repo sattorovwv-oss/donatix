@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import secrets
 import tempfile
 from pathlib import Path
 
@@ -14,11 +15,12 @@ def digest(path):
 
 
 def atomic_copy(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(dir=target.parent, delete=False) as handle:
         handle.write(source.read_bytes())
         temp = Path(handle.name)
     try:
-        reference = target if target.exists() else target.parent / 'app.py'
+        reference = target if target.exists() else target.parent
         stat = reference.stat()
         os.chmod(temp, stat.st_mode & 0o777 if target.exists() else 0o644)
         if hasattr(os, 'chown') and (temp.stat().st_uid, temp.stat().st_gid) != (stat.st_uid, stat.st_gid):
@@ -26,6 +28,16 @@ def atomic_copy(source, target):
         os.replace(temp, target)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def pop_backup(backup):
+    previous = backup / 'previous'
+    saved = backup.parent / ('.mobile-extension-restore-' + secrets.token_hex(6))
+    if previous.exists():
+        previous.rename(saved)
+    shutil.rmtree(backup)
+    if saved.exists():
+        saved.rename(backup)
 
 
 def main():
@@ -58,7 +70,7 @@ def main():
                 (package / name).unlink(missing_ok=True)
             else:
                 atomic_copy(backup / name, package / name)
-        shutil.rmtree(backup)
+        pop_backup(backup)
         print('Previous code restored. Restart the existing service. Database and .env were not changed.')
         return
     records = {}
@@ -75,15 +87,29 @@ def main():
         print('This mobile extension is already installed.')
         return
     if backup.exists():
-        raise SystemExit('An earlier backup exists. Keep it and review the update manually.')
+        if not manifest.is_file():
+            raise SystemExit('Incomplete earlier backup. Review it before updating; nothing was overwritten.')
+        for name, entry in json.loads(manifest.read_text()).items():
+            if digest(package / name) != entry['installed']:
+                raise SystemExit('Earlier installed module changed: ' + name + '. Review change.diff; nothing was overwritten.')
     if args.check:
         print('Revision check passed; would install: ' + ', '.join(records))
         return
-    backup.mkdir(mode=0o700)
-    for name, entry in records.items():
-        if entry['before']:
-            shutil.copy2(package / name, backup / name)
-    manifest.write_text(json.dumps(records, indent=2))
+    staging = Path(tempfile.mkdtemp(prefix='.mobile-extension-stage-', dir=package))
+    try:
+        for name, entry in records.items():
+            if entry['before']:
+                (staging / name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(package / name, staging / name)
+        (staging / 'manifest.json').write_text(json.dumps(records, indent=2))
+        if backup.exists():
+            backup.rename(staging / 'previous')
+        staging.rename(backup)
+    except BaseException:
+        if (staging / 'previous').exists():
+            (staging / 'previous').rename(backup)
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
     installed = []
     try:
         for name in records:
@@ -95,7 +121,7 @@ def main():
                 atomic_copy(backup / name, package / name)
             else:
                 (package / name).unlink(missing_ok=True)
-        shutil.rmtree(backup)
+        pop_backup(backup)
         raise
     print('Mobile extension installed with rollback backup. Database and .env were not changed.')
     print('Restart Donatix and verify /api/v1/mobile/config and /api/v1/mobile-session.')

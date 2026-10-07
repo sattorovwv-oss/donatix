@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -5,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/api.dart';
 import 'widgets/ui.dart';
+import 'widgets/site_design.dart';
 import 'screens/auth.dart';
 import 'screens/home.dart';
 import 'screens/catalog.dart';
@@ -12,6 +14,7 @@ import 'screens/orders.dart';
 import 'screens/balance.dart';
 import 'core/navigation.dart';
 import 'core/notifications.dart';
+import 'core/apple_login.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -35,6 +38,13 @@ ThemeData brandTheme(bool dark) {
     colorScheme: scheme.copyWith(
       primary: dark ? const Color(0xff8b8cf8) : accent,
       onPrimary: dark ? const Color(0xff11122a) : Colors.white,
+      onSurface: dark ? const Color(0xffeceef3) : const Color(0xff121521),
+      onSurfaceVariant: dark
+          ? const Color(0xff9ba2b1)
+          : const Color(0xff5e6577),
+      surfaceContainerHighest: dark
+          ? const Color(0xff1d212c)
+          : const Color(0xfff1f2f7),
     ),
     scaffoldBackgroundColor: dark
         ? const Color(0xff0e1016)
@@ -61,6 +71,9 @@ ThemeData brandTheme(bool dark) {
         minimumSize: const Size(40, 48),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
+    ),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {TargetPlatform.android: FadeForwardsPageTransitionsBuilder()},
     ),
     navigationBarTheme: const NavigationBarThemeData(height: 72),
   );
@@ -93,11 +106,22 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
       });
     };
     api.onSessionChanged = notifications.synchronize;
+    NativeNotifications.channel.setMethodCallHandler((call) async {
+      if (call.method == 'notificationOpened') await openNotification();
+      if (call.method == 'appleCredentialRevoked') {
+        try {
+          await api.logout();
+        } finally {
+          api.onSessionExpired?.call();
+        }
+      }
+    });
     restore();
   }
 
   @override
   void dispose() {
+    NativeNotifications.channel.setMethodCallHandler(null);
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -132,7 +156,7 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
           ? 'TJS'
           : 'USD';
       final restored = await api.restore();
-      if (restored) await notifications.synchronize();
+      await notifications.synchronize();
       WidgetsBinding.instance.addPostFrameCallback((_) => openNotification());
       if (mounted) {
         setState(() {
@@ -268,6 +292,17 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
                   duration: MediaQuery.disableAnimationsOf(context)
                       ? Duration.zero
                       : const Duration(milliseconds: 240),
+                  switchInCurve: siteEase,
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: SlideTransition(
+                      position: Tween<Offset>(
+                        begin: const Offset(0, .015),
+                        end: Offset.zero,
+                      ).animate(animation),
+                      child: child,
+                    ),
+                  ),
                   child: KeyedSubtree(
                     key: ValueKey(index),
                     child: switch (index) {
@@ -329,6 +364,11 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
           ('/admin', 'Админка', Icons.admin_panel_settings_outlined),
         ('/privacy', 'Конфиденциальность', Icons.privacy_tip_outlined),
         ('/terms', 'Условия сервиса', Icons.description_outlined),
+        (
+          '/panel/account-deletion',
+          'Удалить аккаунт и данные',
+          Icons.delete_outline,
+        ),
       ])
         Surface(
           padding: EdgeInsets.zero,
@@ -340,6 +380,34 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
           ),
         ),
       Surface(child: NotificationPreferences(service: notifications)),
+      if (Platform.isIOS)
+        Surface(
+          padding: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.apple),
+            title: const Text('Привязать вход через Apple'),
+            onTap: () async {
+              try {
+                await AppleSignIn.authenticate(api, linkAccount: true);
+                if (context.mounted) {
+                  message(
+                    context,
+                    'Apple ID привязан. Теперь можно входить через Apple.',
+                  );
+                }
+              } on PlatformException catch (e) {
+                if (context.mounted && e.code != 'apple_canceled') {
+                  message(
+                    context,
+                    e.message ?? 'Не удалось привязать Apple ID.',
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) message(context, e);
+              }
+            },
+          ),
+        ),
       Surface(
         padding: EdgeInsets.zero,
         child: ListTile(
@@ -349,7 +417,7 @@ class _DonatixAppState extends State<DonatixApp> with WidgetsBindingObserver {
         ),
       ),
       const Center(
-        child: Text('Donatix · 1.0.0 (2)', style: TextStyle(fontSize: 12)),
+        child: Text('Donatix · 1.0.0 (4)', style: TextStyle(fontSize: 12)),
       ),
     ],
   );

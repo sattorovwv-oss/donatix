@@ -21,6 +21,8 @@ class MainActivity : FlutterActivity() {
                         NotificationSession.configure(this, call.argument<String>("origin")!!, call.argument<String>("cookie")!!, call.argument<Number>("userId")!!.toInt())
                         result.success(null)
                     }
+                    "clearPrivateFiles" -> { File(cacheDir, "shared").deleteRecursively(); result.success(null) }
+                    "pushStatus" -> { result.success(NativePush.status(this)) }
                     "stopNotifications" -> { NotificationSession.stop(this); result.success(null) }
                     "requestNotificationPermission" -> {
                         if (Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) result.success(true)

@@ -1,0 +1,8 @@
+{% extends "admin/_layout.html" %}
+{% block title %}Удаление аккаунтов — Donatix{% endblock %}
+{% block content %}
+<section class="page-hero"><h1>Заявки на удаление аккаунтов</h1><p>Входы, API и боты отключены. После завершения выдачи и возврата остатка личные данные удалятся автоматически.</p></section>
+<div class="card table-wrap"><table><tr><th>Клиент</th><th>Остаток</th><th>Запрошено</th><th>Что осталось завершить</th></tr>
+{% for item in rows %}<tr><td><a href="/admin/users/{{ item.user_id }}">{{ item.login }}</a></td><td>${{ fmt(item.balance_micro) }}</td><td>{{ item.requested_at | dt }}</td><td>{{ item.reason or 'Ожидает обработки' }}</td></tr>{% else %}<tr><td colspan="4">Незавершённых заявок нет.</td></tr>{% endfor %}</table></div>
+<p class="muted">Возврат производится существующим способом оплаты; после него проведите соответствующее списание в карточке клиента. Не списывайте остаток без фактического возврата.</p>
+{% endblock %}

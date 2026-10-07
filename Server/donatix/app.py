@@ -189,6 +189,10 @@ def create_app(config: Config | None = None, supplier: Supplier | None = None) -
             bg = Worker(config, supplier)
             bg.start()
             started.append(bg)
+            from .native_push import PushWorker
+            native = PushWorker(config)
+            native.start()
+            started.append(native)
             if config.alert_telegram_token and config.alert_telegram_chat_id:
                 from .tgbot import AdminBot
                 bot = AdminBot(config, supplier=supplier)
@@ -253,6 +257,8 @@ def create_app(config: Config | None = None, supplier: Supplier | None = None) -
     app.include_router(api.router)
     from . import compat
     app.include_router(compat.router)
+    from . import account_deletion
+    app.include_router(account_deletion.router)
     app.include_router(web.router)
     app.include_router(admin.router)
 

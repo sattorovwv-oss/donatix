@@ -377,6 +377,9 @@ def _finish_login(request: Request, conn, user) -> RedirectResponse:
     """Вход после пароля или Google. Админу — ещё код из админ-бота в Telegram (если включено)."""
 
     config = request.app.state.config
+    if conn.execute("SELECT 1 FROM account_deletions WHERE user_id=? AND state='waiting'", (user['id'],)).fetchone():
+        request.session.clear()
+        return render(request, 'login.html', {'form': {}, 'error': 'Аккаунт ожидает удаления после завершения расчётов.'}, 403)
     nxt = _safe_next(request.session.get("next", ""))   # вернуть туда, где человек хотел купить
     request.session.clear()
     if user["role"] == "admin" and sitecfg.admin_2fa_active(conn, config):
@@ -1326,4 +1329,3 @@ def panel_webhook(request: Request, webhook_url: str = Form(""), rotate: str = F
         return _redirect("/panel/api")
     flash(request, "Настройки webhook сохранены.")
     return _redirect("/panel/api")
-
