@@ -179,6 +179,7 @@ class ExistingSiteApi {
   }
 
   Future<Map<String, dynamic>> bootstrap() async {
+    final epoch = api._sessionEpoch;
     api.personalKeyVerified = false;
     final doc = await page('/panel');
     if (api.session == null ||
@@ -203,24 +204,36 @@ class ExistingSiteApi {
       throw const ApiFailure('Сайт не передал действующий курс сомони.');
     }
     api.tjsRate = rateText;
-    api.personalApiKey = await api.storage.read(key: 'donatix_rest_key_$id');
+    void sameAccount() {
+      api.requireAccount(id);
+      if (epoch != api._sessionEpoch) throw const ApiFailure('Аккаунт изменился.', 401);
+    }
+    final storedKey = await api.storage.read(key: 'donatix_rest_key_$id');
+    sameAccount();
+    api.personalApiKey = storedKey;
     if (api.status == 'active') {
       if (api.personalApiKey != null) {
         try {
           final me = await json('GET', '/api/v1/me');
           if (me['login'] != api.login) api.personalApiKey = null;
         } on ApiFailure catch (e) {
+          sameAccount();
           if (e.status != 401 && e.status != 403) rethrow;
           api.personalApiKey = null;
         }
       }
-      api.personalApiKey ??= await _personalKey();
+      if (api.personalApiKey == null) {
+        final key = await _personalKey();
+        sameAccount();
+        api.personalApiKey = key;
+      }
       final me = await json('GET', '/api/v1/me');
       if (me['login'] != api.login) {
         api.personalApiKey = null;
         throw const ApiFailure('API-ключ принадлежит другому аккаунту.', 403);
       }
       await api.storage.write(key: 'donatix_rest_key_$id', value: api.personalApiKey!);
+      sameAccount();
       api.personalKeyVerified = true;
     } else {
       api.personalApiKey = null;
@@ -332,6 +345,10 @@ class ExistingSiteApi {
     if (path == '/api/v1/me' && api.personalApiKey == null) {
       return profileMe(await page('/panel'));
     }
+    if (isGet && path == '/api/v1/balance' && api.personalApiKey == null) {
+      final me = profileMe(await page('/panel'));
+      return {'ok': true, 'balance': me['balance'], 'currency': 'USD'};
+    }
     if (path == '/api/v1/mobile/home') return home();
     if (path == '/api/v1/mobile/timezone') return timezone(isGet, body);
     if (path == '/api/v1/mobile/keys') return keys(isGet, body);
@@ -391,6 +408,9 @@ class ExistingSiteApi {
     }
     if (path.startsWith('/api/v1/mobile/')) {
       throw const ApiFailure('Эта функция требует отдельной серверной интеграции.', 501);
+    }
+    if (api.personalApiKey == null && path.startsWith('/api/v1/')) {
+      throw const ApiFailure('Для этой операции требуется активация аккаунта администратором.', 403);
     }
     if (!isGet && path.startsWith('/api/v1/')) await guard();
     return null;

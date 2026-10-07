@@ -179,4 +179,45 @@ void main() {
     expect(api.session, cookie(3));
     expect(saved['donatix_session'], isNull);
   });
+  test('Pending accounts can read balance and stay signed in when an API operation is restricted', () async {
+    final api = DonatixApi()..usesExistingApi = true..userId = 2
+      ..session = cookie(2)..status = 'pending';
+    api.dio.httpClientAdapter = SiteAdapter((o) {
+      expect(o.uri.path, '/panel');
+      return htmlResponse(profile.replaceAll('tier-card ok', 'tier-card wait'));
+    });
+    expect((await api.get('/api/v1/balance'))['balance'], '100.0000');
+    await expectLater(api.get('/api/v1/payments/methods'),
+        throwsA(isA<ApiFailure>().having((e) => e.status, 'status', 403)));
+    expect(api.userId, 2);
+    expect(api.session, cookie(2));
+  });
+
+  test('Account change while restoring a stored API key cannot replace the new account key', () async {
+    final api = DonatixApi()..usesExistingApi = true..session = cookie(2);
+    final entered = Completer<void>(), key = Completer<String>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(storage, (call) async {
+      final args = Map<String, dynamic>.from(call.arguments as Map);
+      if (call.method == 'read' && args['key'] == 'donatix_rest_key_2') {
+        entered.complete();
+        return key.future;
+      }
+      return null;
+    });
+    api.dio.httpClientAdapter = SiteAdapter((o) {
+      if (o.uri.path == '/panel') return htmlResponse(profile);
+      if (o.uri.path == '/panel/data/rate') return jsonResponse({'tjs_rate': '11.2'});
+      fail('Unexpected route during account change');
+    });
+    final bootstrap = api.bootstrap();
+    await entered.future;
+    await api.clear();
+    api.userId = 3; api.session = cookie(3); api.personalApiKey = 'new-account-key';
+    key.complete('old-account-key');
+    await expectLater(bootstrap, throwsA(isA<ApiFailure>()));
+    expect(api.personalApiKey, 'new-account-key');
+    expect(api.userId, 3);
+  });
+
 }
