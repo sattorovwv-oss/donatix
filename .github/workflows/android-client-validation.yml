@@ -1,0 +1,27 @@
+name: Android client validation
+on:
+  push:
+    branches: [codex/android-existing-api]
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Donatix_Flutter
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pinned Flutter
+        run: |
+          git clone --depth 1 --branch 3.35.4 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Regression tests
+        run: flutter test
+      - name: Release tooling checks
+        run: python3 -m unittest discover -s tool -p 'test_*.py'

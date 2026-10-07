@@ -108,6 +108,7 @@ class _CartScreenState extends State<CartScreen> {
           'body': body,
           'key': key,
           'title': 'Корзина',
+          if (widget.api.usesExistingApi) 'personal_key_identity': widget.api.personalKeyIdentity,
         }),
       );
       widget.api.requireAccount(owner);

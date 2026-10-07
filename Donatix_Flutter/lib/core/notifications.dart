@@ -245,7 +245,8 @@ class _NotificationBellState extends State<NotificationBell>
     loading = true;
     timer?.cancel();
     try {
-      final d = await widget.api.get('/api/v1/mobile/notifications');
+      final d = await widget.api.get('/api/v1/mobile/notifications',
+          widget.api.usesExistingApi ? {'preview': true} : null);
       if (mounted) setState(() => count = d['unread'] as int? ?? 0);
     } catch (_) {
       /* Keep the last known badge; the inbox reports request errors. */

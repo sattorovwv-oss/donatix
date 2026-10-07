@@ -273,7 +273,8 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-          if ((num.tryParse(text(me['referral_percent'])) ?? 0) > 0)
+          if (me['referral_enabled'] == true ||
+              (num.tryParse(text(me['referral_percent'])) ?? 0) > 0)
             _ReferralBanner(
               onTap: () => openDonatixLink(context, api, '/panel/referrals'),
             ),
