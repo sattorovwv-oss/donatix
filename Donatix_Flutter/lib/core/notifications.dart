@@ -39,7 +39,7 @@ class NativeNotifications {
             'background_notifications',
           ) ??
           false;
-      final signature = '$enabled|${api.userId}|${api.session}';
+      final signature = '$enabled|${api.userId}|${api.session}|${api.usesExistingApi}|${api.personalKeyIdentity}';
       if (signature == configured &&
           (!force ||
               (lastConfiguration != null &&
@@ -47,11 +47,14 @@ class NativeNotifications {
                       const Duration(minutes: 1)))) {
         return;
       }
-      if (enabled && api.userId != 0 && api.session != null) {
+      if (enabled && api.userId != 0 && api.session != null &&
+          (!api.usesExistingApi || api.personalApiKey != null)) {
         await channel.invokeMethod<void>('configureNotifications', {
           'origin': DonatixApi.origin,
           'cookie': api.session,
           'userId': api.userId,
+          'existingApi': api.usesExistingApi,
+          'apiKey': api.personalApiKey,
         });
       } else {
         await channel.invokeMethod<void>('stopNotifications');
@@ -168,6 +171,8 @@ class _NotificationPreferencesState extends State<NotificationPreferences> {
           ? 'Получать уведомления о заказах и изменениях баланса.'
           : widget.service.push['permission'] == false && !Platform.isIOS
           ? 'Уведомления выключены в настройках Android.'
+          : widget.service.api.usesExistingApi
+          ? 'Заказы и баланс проверяются периодически. Доставка может задерживаться. Мгновенные push на сервере не подключены.'
           : widget.service.push['server'] == true &&
                 widget.service.push['registered'] == true
           ? Platform.isIOS

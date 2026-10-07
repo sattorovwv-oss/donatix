@@ -121,7 +121,8 @@ class DonatixApi {
           h.next(o);
         },
         onResponse: (r, h) async {
-          if (r.requestOptions.extra['donatix_session_epoch'] != _sessionEpoch) {
+          if (r.requestOptions.extra['donatix_session_epoch'] != _sessionEpoch ||
+              r.requestOptions.extra['donatix_ignore_cookie'] == true) {
             h.next(r);
             return;
           }

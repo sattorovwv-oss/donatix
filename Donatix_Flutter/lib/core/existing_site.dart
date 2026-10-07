@@ -1,3 +1,5 @@
+// ignore_for_file: prefer_interpolation_to_compose_strings
+
 part of 'api.dart';
 
 /// Compatibility with the unmodified Donatix website. Only its existing HTTP
@@ -5,9 +7,8 @@ part of 'api.dart';
 class ExistingSiteApi {
   final DonatixApi api;
   ExistingSiteApi(this.api);
-  dom.Document? _profile;
   Map<String, dynamic>? _configuration;
-  void reset() => _profile = null;
+  void reset() => _configuration = null;
 
   static String text(dom.Element? element) =>
       (element?.text ?? '').replaceAll(RegExp(r'\s+'), ' ').trim();
@@ -27,7 +28,7 @@ class ExistingSiteApi {
   static String usd(dom.Element? element) {
     if (element == null) throw const ApiFailure('Сервер не передал цену.');
     final titled = element.attributes['title'] ??
-        element.querySelector('[title^="$"]')?.attributes['title'];
+        element.querySelector(r'[title^="$"]')?.attributes['title'];
     final source = titled ?? text(element);
     final found = RegExp(r'\$([+-]?\d+(?:[.,]\d+)?)').firstMatch(source);
     if (found == null) throw const ApiFailure('Не удалось прочитать цену сайта.');
@@ -35,7 +36,8 @@ class ExistingSiteApi {
   }
 
   Future<dom.Document> page(
-    String path, {Map<String, dynamic>? query, bool authenticated = true}
+    String path, {Map<String, dynamic>? query, bool authenticated = true,
+      bool withSession = true}
   ) async {
     final owner = api.userId, epoch = api._sessionEpoch;
     for (var redirects = 0; redirects < 5; redirects++) {
@@ -45,9 +47,10 @@ class ExistingSiteApi {
       }
       final response = await api.dio.get<String>(
         uri.toString(), queryParameters: query,
-        options: Options(responseType: ResponseType.plain, headers: {
+        options: Options(responseType: ResponseType.plain,
+          extra: {'donatix_ignore_cookie': !withSession}, headers: {
           'Accept': 'text/html',
-          'Cookie': (api.session == null ? '' : 'dx_session=' + api.session! + '; ') +
+          'Cookie': (!withSession || api.session == null ? '' : 'dx_session=' + api.session! + '; ') +
               'dx_cur=USD',
         }),
       );
@@ -144,11 +147,11 @@ class ExistingSiteApi {
       api.usesExistingApi = true;
       return _configuration!;
     }
-    final login = await page('/login', authenticated: false);
+    final login = await page('/login', authenticated: false, withSession: false);
     if (login.querySelector('form[action="/login"] input[name="csrf"]') == null) {
       throw const ApiFailure('Сайт не передал форму входа.');
     }
-    final registration = await page('/register', authenticated: false);
+    final registration = await page('/register', authenticated: false, withSession: false);
     api.usesExistingApi = true;
     _configuration = {
       'ok': true,
@@ -188,7 +191,6 @@ class ExistingSiteApi {
     if (id is! int || id <= 0 || api.csrf.isEmpty) {
       throw const ApiFailure('Не удалось подтвердить аккаунт на сайте.', 401);
     }
-    _profile = doc;
     api.userId = id;
     api.login = text(doc.querySelector('.who b, .app-hello b'));
     api.role = doc.querySelector('.side a[href="/admin"]') != null ? 'admin' : 'client';
@@ -219,6 +221,7 @@ class ExistingSiteApi {
       }
       await api.storage.write(key: 'donatix_rest_key_$id', value: api.personalApiKey!);
     }
+    await api.onSessionChanged?.call();
     return {'ok': true, 'csrf': api.csrf, 'login': api.login,
       'user_id': api.userId, 'tjs_rate': api.tjsRate,
       'role': api.role, 'status': api.status};
@@ -227,7 +230,8 @@ class ExistingSiteApi {
   Future<String> _personalKey() async {
     final owner = api.userId;
     final doc = await page('/panel/api');
-    final buttons = doc.querySelectorAll('button[data-show]');
+    final buttons = doc.querySelectorAll('button[data-show]').where((b) =>
+        text(ancestor(b, 'tr')?.querySelector('td')) == 'Donatix Android').toList();
     buttons.sort((a, b) {
       final aName = text(ancestor(a, 'tr')?.querySelector('td'));
       final bName = text(ancestor(b, 'tr')?.querySelector('td'));
@@ -258,7 +262,11 @@ class ExistingSiteApi {
   }
 
   Future<String> _reveal(String id) async {
+    final owner = api.userId, epoch = api._sessionEpoch;
     final r = await api.form('/panel/api/keys/' + id + '/reveal', {'csrf': api.csrf});
+    if (epoch != api._sessionEpoch || api.userId != owner) {
+      throw const ApiFailure('Аккаунт изменился.', 401);
+    }
     dynamic d = r.data;
     if (d is String) {
       try { d = jsonDecode(d); } catch (_) { d = null; }
@@ -393,6 +401,7 @@ class ExistingSiteApi {
         doc.querySelector('form[action="/logout"]') == null) {
       throw const ApiFailure('Сессия истекла. Войдите снова.', 401);
     }
+    api.status = doc.querySelector('.tier-card.ok') != null ? 'active' : 'pending';
     if (api.status != 'active') {
       throw const ApiFailure('Аккаунт ждёт активации администратором.', 403);
     }
@@ -517,6 +526,12 @@ class ExistingSiteApi {
       for (var n = 0; n < integer(item['count'].toString()); n++) {
         api.requireAccount(owner);
         try {
+          final quoted = await quote({'product_id': item['product_id'],
+            'quantity': 1, 'fields': body['fields'] ?? {}});
+          if (Decimal.tryParse(item['expected_total_usd'].toString()) !=
+              Decimal.parse(quoted['total_usd'].toString())) {
+            throw const ApiFailure('Цена пакета изменилась. Проверьте историю и новую стоимость.', 422);
+          }
           final result = await json('POST', '/api/v1/orders', data: {
             'product_id': item['product_id'], 'quantity': 1,
             'fields': body['fields'] ?? {},
@@ -525,7 +540,7 @@ class ExistingSiteApi {
           index++;
         } on ApiFailure catch (e) {
           if (e.status == null || e.status! >= 500 ||
-              [401, 408, 409, 429].contains(e.status)) rethrow;
+              [401, 408, 409, 429].contains(e.status)) { rethrow; }
           return {'ok': true, 'items': made, 'requested': requested,
             'partial': true, 'error': e.message};
         }
@@ -670,7 +685,7 @@ class ExistingSiteApi {
   }
 
   Future<Map<String, dynamic>> home() async {
-    final doc = _profile = await page('/panel');
+    final doc = await page('/panel');
     final markup = RegExp(r'Наценка[^:]*:\s*([\d.,]+)%').firstMatch(doc.body?.text ?? '');
     final all = doc.querySelectorAll('.bal-tile .t-note').lastOrNull;
     final coin = doc.querySelector('.dc-card');
@@ -975,7 +990,7 @@ class ExistingSiteApi {
     final progress = doc.querySelector('.lock-progress');
     final items = <Map<String, dynamic>>[];
     for (final card in doc.querySelectorAll('.bot-card')) {
-      final action = card.querySelector('form[action$="/delete"]')?.attributes['action'] ?? '';
+      final action = card.querySelector(r'form[action$="/delete"]')?.attributes['action'] ?? '';
       final id = int.tryParse(action.split('/').reversed.skip(1).first);
       if (id == null) continue;
       final warn = text(card.querySelector('.flash.warn'));

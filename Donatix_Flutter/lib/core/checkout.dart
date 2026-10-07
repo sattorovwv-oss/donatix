@@ -233,8 +233,16 @@ class _PendingOrderScreenState extends State<PendingOrderScreen> {
           if (!mounted || !await confirmAction(context, 'Проверить покупку?',
               'Если запрос уже выполнен, сервер вернёт его результат. Если он не дошёл, заказ будет оформлен сейчас.\n'
               'Текущая стоимость: ${widget.api.displayPrice(quote['total_usd'])}.\n'
-              'Сначала проверьте историю заказов.')) return;
+              'Сначала проверьте историю заказов.')) { return; }
           body['expected_total_usd'] = quote['total_usd'];
+        } else {
+          final quote = await widget.api.post('/api/v1/mobile/cart/quote', body);
+          widget.api.requireAccount(owner);
+          if (!mounted || !await confirmAction(context, 'Восстановить корзину?',
+              'Уже оформленные пакеты будут найдены по ключам операций. Остальные будут куплены сейчас.\n'
+              'Текущая стоимость всей корзины: ${widget.api.displayPrice(quote['total_usd'])}.\n'
+              'Сначала проверьте историю заказов.')) { return; }
+          body['items'] = quote['items'];
         }
       }
       final d = await widget.api.post(

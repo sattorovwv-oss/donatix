@@ -25,3 +25,5 @@ jobs:
         run: flutter test
       - name: Release tooling checks
         run: python3 -m unittest discover -s tool -p 'test_*.py'
+      - name: Compile Android plugins (internal validation only)
+        run: flutter build apk --debug --dart-define=DONATIX_URL=https://donatix.tj

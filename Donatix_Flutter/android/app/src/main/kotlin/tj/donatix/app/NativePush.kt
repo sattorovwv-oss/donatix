@@ -25,6 +25,7 @@ object NativePush {
     fun register(c: Context, replace: Boolean = false) {
         if (!configured(c) || NotificationSession.prefs(c).getInt("userId", 0) == 0) return
         val prefs = NotificationSession.prefs(c)
+        if (prefs.getBoolean("existing_api", false)) return
         if (!replace && prefs.getBoolean("push_registered", false) && prefs.getBoolean("push_server", false)) return
         FirebaseMessaging.getInstance().isAutoInitEnabled = true
         val request = OneTimeWorkRequestBuilder<PushRegistrationWorker>()
@@ -45,6 +46,7 @@ object NativePush {
     }
     fun status(c: Context): Map<String, Any> = mapOf(
         "firebase" to configured(c),
+        "existingApi" to NotificationSession.prefs(c).getBoolean("existing_api", false),
         "registered" to NotificationSession.prefs(c).getBoolean("push_registered", false),
         "server" to NotificationSession.prefs(c).getBoolean("push_server", false),
         "permission" to NotificationManagerCompat.from(c).areNotificationsEnabled(),
@@ -77,7 +79,7 @@ class PushRegistrationWorker(c: Context, params: WorkerParameters) : Worker(c, p
         val uid = p.getInt("userId", 0)
         val origin = p.getString("origin", null) ?: return Result.success()
         val cookie = NotificationSession.cookie(c) ?: return Result.success()
-        if (uid == 0 || !NativePush.configured(c)) return Result.success()
+        if (uid == 0 || !NativePush.configured(c) || p.getBoolean("existing_api", false)) return Result.success()
         return try {
             val token = com.google.android.gms.tasks.Tasks.await(FirebaseMessaging.getInstance().token,
                 30, java.util.concurrent.TimeUnit.SECONDS)
