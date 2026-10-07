@@ -179,6 +179,7 @@ class ExistingSiteApi {
   }
 
   Future<Map<String, dynamic>> bootstrap() async {
+    api.personalKeyVerified = false;
     final doc = await page('/panel');
     if (api.session == null ||
         doc.querySelector('form[action="/logout"]') == null) {
@@ -220,6 +221,9 @@ class ExistingSiteApi {
         throw const ApiFailure('API-ключ принадлежит другому аккаунту.', 403);
       }
       await api.storage.write(key: 'donatix_rest_key_$id', value: api.personalApiKey!);
+      api.personalKeyVerified = true;
+    } else {
+      api.personalApiKey = null;
     }
     await api.onSessionChanged?.call();
     return {'ok': true, 'csrf': api.csrf, 'login': api.login,
@@ -703,7 +707,8 @@ class ExistingSiteApi {
       }
     }
     return {'ok': true, 'orders_all': integer(text(all)),
-      'low_usd': '0', 'markup': markup?.group(1)?.replaceAll(',', '.') ?? '',
+      'low_usd': '0', 'low_balance': doc.querySelector('.low-bal') != null,
+      'markup': markup?.group(1)?.replaceAll(',', '.') ?? '',
       'referral_enabled': doc.querySelector('.ref-promo') != null,
       'referral_percent': null, 'dcoin': dc, 'dcoin_enabled': dc != null,
       'support_contact': doc.querySelector('.quick a[href^="https://t.me/"]')?.attributes['href'] ?? '',
@@ -790,7 +795,10 @@ class ExistingSiteApi {
   Future<Map<String, dynamic>> notifications({bool preview = false}) async {
     final doc = await page(preview ? '/panel' : '/panel/notifications');
     if (preview) {
-      final badge = text(doc.querySelector('.bell .dot-count'));
+      final bell = doc.querySelector('.bell');
+      final badge = bell?.attributes['aria-label']?.contains(':') == true
+          ? bell!.attributes['aria-label']!.split(':').last
+          : text(bell?.querySelector('.dot-count'));
       return {'ok': true, 'unread': integer(badge), 'items': <Map<String, dynamic>>[],
         'total': 0};
     }

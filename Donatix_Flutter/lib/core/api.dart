@@ -29,9 +29,23 @@ class DonatixApi {
   late final Dio dio;
   bool usesExistingApi = false;
   String? personalApiKey;
+  bool personalKeyVerified = false;
   String? get personalKeyIdentity => personalApiKey == null ? null :
       sha256.convert(utf8.encode(personalApiKey!)).toString();
   int _sessionEpoch = 0;
+  Future<void> _cookieWrites = Future.value();
+  Future<void> _persistCookie(String? value, int epoch) {
+    final next = _cookieWrites.catchError((Object _) {}).then((_) async {
+      if (epoch != _sessionEpoch) return;
+      if (value == null) {
+        await storage.delete(key: 'donatix_session');
+      } else {
+        await storage.write(key: 'donatix_session', value: value);
+      }
+    });
+    _cookieWrites = next;
+    return next;
+  }
   late final ExistingSiteApi existingSite = ExistingSiteApi(this);
   String? session;
   String csrf = '';
@@ -132,11 +146,7 @@ class DonatixApi {
             session = cookie.value.isEmpty || cookie.maxAge == 0
                 ? null
                 : cookie.value;
-            if (session == null) {
-              await storage.delete(key: 'donatix_session');
-            } else {
-              await storage.write(key: 'donatix_session', value: session);
-            }
+            await _persistCookie(session, _sessionEpoch);
           }
           await onSessionChanged?.call();
           h.next(r);
@@ -189,12 +199,13 @@ class DonatixApi {
     _sessionEpoch++;
     session = null;
     personalApiKey = null;
+    personalKeyVerified = false;
     existingSite.reset();
     userId = 0;
     role = 'client';
     status = '';
     csrf = '';
-    await storage.delete(key: 'donatix_session');
+    await _persistCookie(null, _sessionEpoch);
     if (owner > 0) await storage.delete(key: 'donatix_rest_key_$owner');
     try {
       await const MethodChannel(
@@ -331,6 +342,7 @@ class DonatixApi {
   }) async {
     _sessionEpoch++;
     personalApiKey = null;
+    personalKeyVerified = false;
     userId = 0;
     role = 'client';
     existingSite.reset();

@@ -78,7 +78,7 @@ class HomeScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 18.4),
             ),
           ),
-          if (Decimal.parse(text(me['balance'])) <
+          if (me['low_balance'] == true || Decimal.parse(text(me['balance'])) <
               Decimal.parse(text(me['low_usd'] ?? '0')))
             Surface(
               child: Row(

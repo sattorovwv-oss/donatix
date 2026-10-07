@@ -101,7 +101,9 @@ object NotificationSession {
         p.edit().putString("origin", origin).putInt("userId", userId)
             .putBoolean("existing_api", existingApi).apply()
         if (changed) p.edit().remove("rest_snapshot").apply()
-        if (existingApi) NativePush.stop(c) else NativePush.register(c, replace = changed)
+        if (existingApi) {
+            if (changed) NativePush.stop(c)
+        } else NativePush.register(c, replace = changed)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val work = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES).setConstraints(constraints).build()
         WorkManager.getInstance(c).enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, work)

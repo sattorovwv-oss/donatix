@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -143,9 +142,9 @@ void main() {
     var charges = 0;
     api.dio.httpClientAdapter = SiteAdapter((o) {
       if (o.uri.path == '/panel') return htmlResponse(profile);
-      if (o.uri.path == '/api/v1/products/pack') return jsonResponse({'product': {
+      if (o.uri.path == '/api/v1/products/pack') { return jsonResponse({'product': {
         'price_usd': '2.0001', 'kind': 'topup', 'min_quantity': 1,
-        'max_quantity': 1, 'fields': []}});
+        'max_quantity': 1, 'fields': []}}); }
       if (o.uri.path == '/api/v1/balance') return jsonResponse({'balance': '100'});
       charges++;
       fail('Unexpected charge route ${o.uri.path}');

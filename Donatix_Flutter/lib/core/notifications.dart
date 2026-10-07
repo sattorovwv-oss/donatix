@@ -39,7 +39,7 @@ class NativeNotifications {
             'background_notifications',
           ) ??
           false;
-      final signature = '$enabled|${api.userId}|${api.session}|${api.usesExistingApi}|${api.personalKeyIdentity}';
+      final signature = '$enabled|${api.userId}|${api.session}|${api.usesExistingApi}|${api.personalKeyIdentity}|${api.personalKeyVerified}';
       if (signature == configured &&
           (!force ||
               (lastConfiguration != null &&
@@ -48,7 +48,7 @@ class NativeNotifications {
         return;
       }
       if (enabled && api.userId != 0 && api.session != null &&
-          (!api.usesExistingApi || api.personalApiKey != null)) {
+          (!api.usesExistingApi || (api.personalApiKey != null && api.personalKeyVerified))) {
         await channel.invokeMethod<void>('configureNotifications', {
           'origin': DonatixApi.origin,
           'cookie': api.session,
