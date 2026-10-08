@@ -153,12 +153,32 @@ class ExistingSiteApi {
     }
     final registration = await page('/register', authenticated: false, withSession: false);
     api.usesExistingApi = true;
+    api.androidExtension = false;
+    api.androidPushEnabled = false;
+    var googleEnabled = false;
+    // Optional isolated module; a missing module never disables password login.
+    if (!Platform.isIOS && defaultTargetPlatform == TargetPlatform.android) {
+      try {
+        final response = await api.dio.get<dynamic>('/api/v1/android/config',
+          options: Options(extra: {'donatix_ignore_cookie': true},
+            headers: {'Cookie': '', 'Accept': 'application/json'}));
+        dynamic extension = response.data;
+        if (extension is String) extension = jsonDecode(extension);
+        if (response.statusCode == 200 && extension is Map &&
+            extension['ok'] == true && extension['android_extension_version'] == 1) {
+          api.androidExtension = true;
+          api.androidPushEnabled = extension['fcm_enabled'] == true;
+          googleEnabled = extension['google_enabled'] == true;
+        }
+      } on DioException { /* Existing site continues to work. */ }
+      on FormatException { /* Unknown response is not a supported module. */ }
+    }
     _configuration = {
       'ok': true,
       'site_name': text(login.querySelector('.brand')).isEmpty
           ? 'Donatix' : text(login.querySelector('.brand')),
       'registration_open': registration.querySelector('form[action="/register"]') != null,
-      'google_enabled': false,
+      'google_enabled': googleEnabled,
       'site_google_enabled': login.querySelector('a[href="/auth/google"]') != null,
       'apple_enabled': false,
       'features': ['existing_rest_api', 'existing_site_forms'],
@@ -302,6 +322,9 @@ class ExistingSiteApi {
     final isGet = method == 'GET';
     if (path == '/api/v1/mobile/config') return configuration();
     if (path == '/api/v1/mobile-session') return bootstrap();
+    if (api.androidExtension && path.startsWith('/api/v1/android/')) {
+      return json(method, path, data: data, query: query);
+    }
     if (path == '/api/v1/mobile/categories') return categories(query ?? {});
     if (path.startsWith('/api/v1/mobile/public/')) {
       path = path.replaceFirst('/api/v1/mobile/public/', '/api/v1/');

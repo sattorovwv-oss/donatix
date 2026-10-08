@@ -1,0 +1,26 @@
+{% extends "_app.html" %}
+{% from "_icons.html" import icon, nav_link %}
+{% block sidenav %}
+{% set current = request.url.path ~ ('?' ~ request.url.query if request.url.query else '') %}
+<h4>Админка</h4>
+{{ nav_link('/admin', 'Сводка', 'home', current) }}
+{{ nav_link('/admin/money', 'Учёт денег', 'chart', current) }}
+{{ nav_link('/admin/finance', 'Деньги за сутки', 'wallet', current) }}
+{{ nav_link('/admin/stats', 'Аналитика продаж', 'chart', current) }}
+{{ nav_link('/admin/traffic', 'Посещаемость', 'eye', current) }}
+{{ nav_link('/admin/pricelist', 'Прайс-лист картинкой', 'gift', current) }}
+{{ nav_link('/admin/orders', 'Заказы', 'bag', current) }}
+{{ nav_link('/admin/payments', 'Пополнения', 'wallet', current) }}
+{{ nav_link('/admin/pay-settings', 'Реквизиты', 'card', current) }}
+{{ nav_link('/admin/errors', 'Ошибки', 'alert', current) }}
+{{ nav_link('/admin/users', 'Клиенты', 'users', current) }}
+{{ nav_link('/admin/users?status=pending', 'Заявки', 'handshake', current) }}
+{{ nav_link('/admin/products', 'Каталог', 'grid', current) }}
+{{ nav_link('/admin/catalog-sync', 'Загрузка каталога', 'refresh', current) }}
+{{ nav_link('/admin/shopbot', 'Бот-магазин', 'zap-send', current) }}
+{{ nav_link('/admin/bots', 'Конструктор ботов', 'zap-send', current) }}
+{{ nav_link('/admin/settings', 'Настройки', 'shield', current) }}
+<h4>Сайт</h4>
+{{ nav_link('/panel', 'Панель клиента', 'home', current) }}
+{{ nav_link('/', 'Главная страница', 'arrow-right', current) }}
+{% endblock %}

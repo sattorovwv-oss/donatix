@@ -70,8 +70,9 @@ object NotificationSession {
     fun current(c: Context, uid: Int, expectedCookie: String): Boolean =
         prefs(c).getInt("userId", 0) == uid && sessionIdentity(cookie(c)) == sessionIdentity(expectedCookie)
     @Synchronized
-    fun registered(c: Context, uid: Int, expectedCookie: String, server: Boolean) {
-        if (current(c, uid, expectedCookie)) prefs(c).edit().putBoolean("push_registered", true).putBoolean("push_server", server).apply()
+    fun registered(c: Context, uid: Int, expectedCookie: String, server: Boolean, binding: String? = null) {
+        if (current(c, uid, expectedCookie)) prefs(c).edit().putBoolean("push_registered", true).putBoolean("push_server", server)
+            .putString("push_binding", binding).apply()
     }
     @Synchronized
     fun watermark(c: Context, uid: Int, expectedCookie: String, value: Long) {
@@ -79,7 +80,7 @@ object NotificationSession {
     }
     @Synchronized
     fun configure(c: Context, origin: String, cookie: String, userId: Int,
-                  existingApi: Boolean = false, personalKey: String? = null) {
+                  existingApi: Boolean = false, personalKey: String? = null, androidExtension: Boolean = false) {
         val uri = URL(origin)
         require(uri.protocol == "https" && uri.host.isNotBlank() && uri.userInfo == null &&
             uri.query == null && uri.ref == null && (uri.path.isEmpty() || uri.path == "/") &&
@@ -89,19 +90,20 @@ object NotificationSession {
         val changed = p.getInt("userId", 0) != userId || p.getString("origin", null) != origin ||
             sessionIdentity(cookie(c)) != sessionIdentity(cookie) ||
             p.getBoolean("existing_api", false) != existingApi ||
+            p.getBoolean("android_extension", false) != androidExtension ||
             (existingApi && apiKey(c) != personalKey)
         if (p.getInt("userId", 0) != userId) {
             p.edit().clear().apply()
             NotificationManagerCompat.from(c).cancelAll()
         }
-        if (changed) p.edit().putBoolean("push_registered", false).putBoolean("push_server", false).apply()
+        if (changed) p.edit().putBoolean("push_registered", false).putBoolean("push_server", false).remove("push_binding").apply()
         storeCookie(c, cookie)
         if (existingApi) storeSecret(c, "rest_key", "rest_key_iv", personalKey!!)
         else p.edit().remove("rest_key").remove("rest_key_iv").apply()
         p.edit().putString("origin", origin).putInt("userId", userId)
-            .putBoolean("existing_api", existingApi).apply()
+            .putBoolean("existing_api", existingApi).putBoolean("android_extension", androidExtension).apply()
         if (changed) p.edit().remove("rest_snapshot").apply()
-        if (existingApi) {
+        if (existingApi && !androidExtension) {
             if (changed) NativePush.stop(c)
         } else NativePush.register(c, replace = changed)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
@@ -150,10 +152,12 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
         val session = NotificationSession.cookie(c) ?: return Result.success()
         val uid = p.getInt("userId", 0)
         val origin = p.getString("origin", null) ?: return Result.success()
-        if (p.getBoolean("existing_api", false)) return checkExisting(c, uid, session, origin)
+        val extension = p.getBoolean("android_extension", false)
+        if (p.getBoolean("existing_api", false) && !extension) return checkExisting(c, uid, session, origin)
         var connection: HttpURLConnection? = null
         return try {
-            connection = URL(origin.trimEnd('/') + "/api/v1/mobile/notifications").openConnection() as HttpURLConnection
+            val inbox = if (extension) "/api/v1/android/notifications" else "/api/v1/mobile/notifications"
+            connection = URL(origin.trimEnd('/') + inbox).openConnection() as HttpURLConnection
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15000; connection.readTimeout = 20000
             connection.setRequestProperty("Accept", "application/json")

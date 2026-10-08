@@ -5,6 +5,20 @@ on:
 permissions:
   contents: read
 jobs:
+  site-addon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the pristine site fixture (no keys or databases)
+        run: |
+          python3 Android_Server_Addon/prepare_fixture.py "$RUNNER_TEMP/donatix-site"
+      - name: Install verification dependencies
+        run: python3 -m pip install -r "$RUNNER_TEMP/donatix-site/donatix/requirements.txt" pytest
+      - name: Android module regression tests
+        run: PYTHONPATH="$RUNNER_TEMP/donatix-site:$GITHUB_WORKSPACE/Android_Server_Addon" python3 -m pytest Android_Server_Addon/tests -q
+      - name: Original site regression tests through the wrapper
+        run: PYTHONPATH="$RUNNER_TEMP/donatix-site:$GITHUB_WORKSPACE/Android_Server_Addon" python3 Android_Server_Addon/verify_original.py "$RUNNER_TEMP/donatix-site"
   flutter:
     runs-on: ubuntu-latest
     timeout-minutes: 25

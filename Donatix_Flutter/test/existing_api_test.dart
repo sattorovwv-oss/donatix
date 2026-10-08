@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:donatix/core/api.dart';
 
@@ -54,6 +55,9 @@ void main() {
       if (o.uri.path == '/api/v1/mobile/config') {
         return jsonResponse({'ok': false, 'error': 'Not Found'}, 404);
       }
+      if (o.uri.path == '/api/v1/android/config') {
+        return jsonResponse({'ok': false, 'error': 'Not Found'}, 404);
+      }
       expect(o.headers['Cookie'], 'dx_cur=USD');
       final route = o.uri.path;
       return ResponseBody.fromString(
@@ -67,6 +71,38 @@ void main() {
     expect(config['google_enabled'], isFalse);
     expect(api.session, original);
     expect(saved['donatix_session'], isNull);
+  });
+
+  test('Android extension enables Google and FCM without replacing the session', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final api = DonatixApi()..session = cookie(2);
+    final original = api.session;
+    api.dio.httpClientAdapter = SiteAdapter((o) {
+      if (o.uri.path == '/api/v1/android/config') {
+        expect(o.headers['Cookie'], '');
+        return jsonResponse({'ok': true, 'android_extension_version': 1,
+          'google_enabled': true, 'fcm_enabled': true});
+      }
+      final route = o.uri.path;
+      return htmlResponse('<form action="$route"><input name="csrf" value="guest-csrf"></form>');
+    });
+    final config = await api.existingSite.configuration();
+    expect(config['google_enabled'], isTrue);
+    expect(api.usesExistingApi, isTrue);
+    expect(api.androidExtension, isTrue);
+    expect(api.androidPushEnabled, isTrue);
+    expect(api.session, original);
+  });
+
+  test('Android OAuth uses its isolated routes without requiring a personal key', () async {
+    final api = DonatixApi()..usesExistingApi = true..androidExtension = true;
+    api.dio.httpClientAdapter = SiteAdapter((o) {
+      expect(o.uri.path, '/api/v1/android/oauth/prepare');
+      return jsonResponse({'ok': true, 'ticket': 'ticket', 'url': 'https://donatix.tj/api/v1/android/oauth/start/ticket'});
+    });
+    final result = await api.post('/api/v1/android/oauth/prepare', {'challenge': 'a' * 64});
+    expect(result['ticket'], 'ticket');
   });
 
   test('Active login obtains a dedicated account key through the existing form', () async {

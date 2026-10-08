@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:decimal/decimal.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:html/parser.dart' as html;
@@ -28,6 +29,8 @@ class DonatixApi {
   final storage = const FlutterSecureStorage();
   late final Dio dio;
   bool usesExistingApi = false;
+  bool androidExtension = false;
+  bool androidPushEnabled = false;
   String? personalApiKey;
   bool personalKeyVerified = false;
   String? get personalKeyIdentity => personalApiKey == null ? null :

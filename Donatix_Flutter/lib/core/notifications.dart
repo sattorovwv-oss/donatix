@@ -39,7 +39,7 @@ class NativeNotifications {
             'background_notifications',
           ) ??
           false;
-      final signature = '$enabled|${api.userId}|${api.session}|${api.usesExistingApi}|${api.personalKeyIdentity}|${api.personalKeyVerified}';
+      final signature = '$enabled|${api.userId}|${api.session}|${api.usesExistingApi}|${api.personalKeyIdentity}|${api.personalKeyVerified}|${api.androidExtension}|${api.androidPushEnabled}';
       if (signature == configured &&
           (!force ||
               (lastConfiguration != null &&
@@ -55,6 +55,7 @@ class NativeNotifications {
           'userId': api.userId,
           'existingApi': api.usesExistingApi,
           'apiKey': api.personalApiKey,
+          'androidExtension': api.androidExtension && api.androidPushEnabled,
         });
       } else {
         await channel.invokeMethod<void>('stopNotifications');
@@ -80,7 +81,8 @@ class NativeNotifications {
       await refreshStatus();
       try {
         if (push['deviceId'] != null) {
-          await api.post('/api/v1/mobile/push/unregister', {
+          await api.post(api.usesExistingApi && api.androidExtension
+              ? '/api/v1/android/push/unregister' : '/api/v1/mobile/push/unregister', {
             'device_id': push['deviceId'],
           });
         }
@@ -171,7 +173,8 @@ class _NotificationPreferencesState extends State<NotificationPreferences> {
           ? 'Получать уведомления о заказах и изменениях баланса.'
           : widget.service.push['permission'] == false && !Platform.isIOS
           ? 'Уведомления выключены в настройках Android.'
-          : widget.service.api.usesExistingApi
+          : widget.service.api.usesExistingApi &&
+                !(widget.service.api.androidExtension && widget.service.api.androidPushEnabled)
           ? 'Заказы и баланс проверяются периодически. Доставка может задерживаться. Мгновенные push на сервере не подключены.'
           : widget.service.push['server'] == true &&
                 widget.service.push['registered'] == true
