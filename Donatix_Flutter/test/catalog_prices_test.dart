@@ -282,8 +282,8 @@ void main() {
           .querySelector('form[action="/admin/settings"]')!;
       Map<String, String>? posted;
       api.dio.httpClientAdapter = SiteAdapter((r) {
-        expect(r.method, 'POST');
-        expect(r.uri.path, '/admin/settings');
+        expectSync(r.method, 'POST');
+        expectSync(r.uri.path, '/admin/settings');
         posted = Map.fromEntries((r.data as FormData).fields);
         return htmlResponse('<main>Сохранено</main>');
       });
