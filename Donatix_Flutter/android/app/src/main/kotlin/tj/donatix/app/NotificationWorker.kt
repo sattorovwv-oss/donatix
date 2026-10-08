@@ -38,15 +38,20 @@ object NotificationSession {
         }.generateKey()
     }
     fun storeCookie(c: Context, cookie: String) {
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
-        val encrypted = cipher.doFinal(cookie.toByteArray(Charsets.UTF_8))
-        prefs(c).edit().putString("cookie", Base64.encodeToString(encrypted, Base64.NO_WRAP))
-            .putString("iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
+        storeSecret(c, "cookie", "iv", cookie)
     }
-    fun cookie(c: Context): String? {
+    private fun storeSecret(c: Context, name: String, ivName: String, value: String) {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
+        val encrypted = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        prefs(c).edit().putString(name, Base64.encodeToString(encrypted, Base64.NO_WRAP))
+            .putString(ivName, Base64.encodeToString(cipher.iv, Base64.NO_WRAP)).apply()
+    }
+    fun cookie(c: Context): String? = secret(c, "cookie", "iv")
+    fun apiKey(c: Context): String? = secret(c, "rest_key", "rest_key_iv")
+    private fun secret(c: Context, name: String, ivName: String): String? {
         val p = prefs(c)
-        val raw = p.getString("cookie", null) ?: return null
-        val iv = p.getString("iv", null) ?: return null
+        val raw = p.getString(name, null) ?: return null
+        val iv = p.getString(ivName, null) ?: return null
         return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, Base64.decode(iv, Base64.NO_WRAP))) }
             String(cipher.doFinal(Base64.decode(raw, Base64.NO_WRAP)), Charsets.UTF_8)
@@ -65,30 +70,42 @@ object NotificationSession {
     fun current(c: Context, uid: Int, expectedCookie: String): Boolean =
         prefs(c).getInt("userId", 0) == uid && sessionIdentity(cookie(c)) == sessionIdentity(expectedCookie)
     @Synchronized
-    fun registered(c: Context, uid: Int, expectedCookie: String, server: Boolean) {
-        if (current(c, uid, expectedCookie)) prefs(c).edit().putBoolean("push_registered", true).putBoolean("push_server", server).apply()
+    fun registered(c: Context, uid: Int, expectedCookie: String, server: Boolean, binding: String? = null) {
+        if (current(c, uid, expectedCookie)) prefs(c).edit().putBoolean("push_registered", true).putBoolean("push_server", server)
+            .putString("push_binding", binding).apply()
     }
     @Synchronized
     fun watermark(c: Context, uid: Int, expectedCookie: String, value: Long) {
         if (current(c, uid, expectedCookie)) prefs(c).edit().putLong("watermark", value).apply()
     }
     @Synchronized
-    fun configure(c: Context, origin: String, cookie: String, userId: Int) {
+    fun configure(c: Context, origin: String, cookie: String, userId: Int,
+                  existingApi: Boolean = false, personalKey: String? = null, androidExtension: Boolean = false) {
         val uri = URL(origin)
         require(uri.protocol == "https" && uri.host.isNotBlank() && uri.userInfo == null &&
             uri.query == null && uri.ref == null && (uri.path.isEmpty() || uri.path == "/") &&
             userId > 0 && cookie.isNotBlank())
+        require(!existingApi || !personalKey.isNullOrBlank())
         val p = prefs(c)
         val changed = p.getInt("userId", 0) != userId || p.getString("origin", null) != origin ||
-            sessionIdentity(cookie(c)) != sessionIdentity(cookie)
+            sessionIdentity(cookie(c)) != sessionIdentity(cookie) ||
+            p.getBoolean("existing_api", false) != existingApi ||
+            p.getBoolean("android_extension", false) != androidExtension ||
+            (existingApi && apiKey(c) != personalKey)
         if (p.getInt("userId", 0) != userId) {
             p.edit().clear().apply()
             NotificationManagerCompat.from(c).cancelAll()
         }
-        if (changed) p.edit().putBoolean("push_registered", false).putBoolean("push_server", false).apply()
+        if (changed) p.edit().putBoolean("push_registered", false).putBoolean("push_server", false).remove("push_binding").apply()
         storeCookie(c, cookie)
-        p.edit().putString("origin", origin).putInt("userId", userId).apply()
-        NativePush.register(c, replace = changed)
+        if (existingApi) storeSecret(c, "rest_key", "rest_key_iv", personalKey!!)
+        else p.edit().remove("rest_key").remove("rest_key_iv").apply()
+        p.edit().putString("origin", origin).putInt("userId", userId)
+            .putBoolean("existing_api", existingApi).putBoolean("android_extension", androidExtension).apply()
+        if (changed) p.edit().remove("rest_snapshot").apply()
+        if (existingApi && !androidExtension) {
+            if (changed) NativePush.stop(c)
+        } else NativePush.register(c, replace = changed)
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val work = PeriodicWorkRequestBuilder<NotificationWorker>(15, TimeUnit.MINUTES).setConstraints(constraints).build()
         WorkManager.getInstance(c).enqueueUniquePeriodicWork(WORK, ExistingPeriodicWorkPolicy.UPDATE, work)
@@ -96,9 +113,9 @@ object NotificationSession {
             OneTimeWorkRequestBuilder<NotificationWorker>().setConstraints(constraints).build())
     }
     @Synchronized
-    fun show(c: Context, uid: Int, id: Long, title: String, body: String, link: String) {
+    fun show(c: Context, uid: Int, id: Long, title: String, body: String, link: String, expectedCookie: String? = null) {
         val p = prefs(c)
-        if (p.getInt("userId", 0) != uid) return
+        if (p.getInt("userId", 0) != uid || (expectedCookie != null && !current(c, uid, expectedCookie))) return
         if (!NotificationManagerCompat.from(c).areNotificationsEnabled()) return
         if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(c, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         val seen = (p.getStringSet("shown_ids", emptySet()) ?: emptySet()).toMutableSet()
@@ -135,9 +152,12 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
         val session = NotificationSession.cookie(c) ?: return Result.success()
         val uid = p.getInt("userId", 0)
         val origin = p.getString("origin", null) ?: return Result.success()
+        val extension = p.getBoolean("android_extension", false)
+        if (p.getBoolean("existing_api", false) && !extension) return checkExisting(c, uid, session, origin)
         var connection: HttpURLConnection? = null
         return try {
-            connection = URL(origin.trimEnd('/') + "/api/v1/mobile/notifications").openConnection() as HttpURLConnection
+            val inbox = if (extension) "/api/v1/android/notifications" else "/api/v1/mobile/notifications"
+            connection = URL(origin.trimEnd('/') + inbox).openConnection() as HttpURLConnection
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15000; connection.readTimeout = 20000
             connection.setRequestProperty("Accept", "application/json")
@@ -171,5 +191,86 @@ class NotificationWorker(context: Context, params: WorkerParameters) : Worker(co
             Result.success()
         } catch (_: Exception) { Result.retry() }
         finally { connection?.disconnect() }
+    }
+
+    private fun checkExisting(c: Context, uid: Int, session: String, origin: String): Result {
+        val p = NotificationSession.prefs(c)
+        val key = NotificationSession.apiKey(c) ?: return Result.success()
+        fun current() = !isStopped && NotificationSession.current(c, uid, session) &&
+            NotificationSession.apiKey(c) == key
+        fun read(path: String, json: Boolean = true): String? {
+            val connection = URL(origin.trimEnd('/') + path).openConnection() as HttpURLConnection
+            try {
+                connection.instanceFollowRedirects = false
+                connection.connectTimeout = 15000; connection.readTimeout = 20000
+                connection.setRequestProperty("Cookie", "dx_session=$session; dx_cur=USD")
+                connection.setRequestProperty("Accept", if (json) "application/json" else "text/html")
+                if (json) connection.setRequestProperty("X-API-Key", key)
+                if (connection.responseCode in listOf(401, 403) ||
+                    (!json && connection.responseCode in 300..399)) {
+                    if (current()) NotificationSession.stop(c)
+                    return null
+                }
+                if (connection.responseCode != 200) throw IllegalStateException("HTTP error")
+                val bytes = connection.inputStream.use { input ->
+                    val output = java.io.ByteArrayOutputStream()
+                    val buffer = ByteArray(8192)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        require(output.size() + count <= 1024 * 1024)
+                        output.write(buffer, 0, count)
+                    }
+                    output.toByteArray()
+                }
+                return String(bytes, Charsets.UTF_8)
+            } finally { connection.disconnect() }
+        }
+        return try {
+            // Validate the browser session too: a revoked session must never
+            // leave its otherwise still-valid personal API key polling.
+            val panel = read("/panel", false) ?: return Result.success()
+            if (!panel.contains("action=\"/logout\"")) return Result.retry()
+            val orders = JSONObject(read("/api/v1/orders?limit=100") ?: return Result.success())
+            val payments = JSONObject(read("/api/v1/payments?limit=100") ?: return Result.success())
+            val balance = JSONObject(read("/api/v1/balance") ?: return Result.success())
+            if (!current()) return Result.success()
+            val next = JSONObject().put("balance", balance.getString("balance"))
+            for ((label, payload) in listOf("order" to orders, "payment" to payments)) {
+                val rows = payload.getJSONArray("items")
+                for (i in 0 until rows.length()) {
+                    val row = rows.getJSONObject(i)
+                    val id = row.get(if (label == "order") "order_id" else "id").toString()
+                    next.put("$label:$id", row.getString("status"))
+                }
+            }
+            val before = p.getString("rest_snapshot", null)?.let { JSONObject(it) }
+            val revision = p.getLong("rest_revision", 0) + 1
+            if (before != null) {
+                for (entry in next.keys()) {
+                    if (!current()) return Result.success()
+                    val value = next.getString(entry)
+                    if (value == before.optString(entry)) continue
+                    val order = entry.startsWith("order:")
+                    val status = when (value) {
+                        "completed", "approved" -> "Выполнено"
+                        "failed", "rejected" -> "Отклонено"
+                        "processing", "attention" -> "Обрабатывается"
+                        "pending", "waiting" -> "Ожидает оплаты"
+                        else -> value
+                    }
+                    val title = if (entry == "balance") "Баланс Donatix"
+                        else if (order) "Заказ " + entry.substringAfter(':') else "Пополнение Donatix"
+                    val body = if (entry == "balance") "Текущий баланс: " + value + " USD" else status
+                    val link = if (order) "/panel/orders/" + entry.substringAfter(':') else "/panel/balance"
+                    val eventId = (entry + ":" + value + ":" + revision).hashCode().toLong() and 0xffffffffL
+                    NotificationSession.show(c, uid, eventId, title, body, link, session)
+                }
+            }
+            synchronized(NotificationSession) {
+                if (current()) p.edit().putString("rest_snapshot", next.toString()).putLong("rest_revision", revision).apply()
+            }
+            Result.success()
+        } catch (_: Exception) { Result.retry() }
     }
 }

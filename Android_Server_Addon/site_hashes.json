@@ -1,0 +1,13 @@
+{
+  "donatix/app.py": "44527122bd8b2357bdbcba06b91b4781ae14082fb6f4bab11f440a1ebf99855b",
+  "donatix/__main__.py": "660fdc9314b40965a38d4ae0c97cc30e9e83f8a74ba98ecde70b16f694675685",
+  "donatix/api.py": "b32cfe5d72f6590f28a60392a6d25761875ab02fb70af800f8e4e1e5229f3b72",
+  "donatix/accounts.py": "9fe6941e45dde8bd00ca87a5f4127f3217ce3c571eb2927f0d7a836c76cb02be",
+  "donatix/config.py": "008a2c9991b13ba135eba1cccbeed4de89b50e15fea2ca5ab45c603dda658a53",
+  "donatix/db.py": "4995bf2b9f64df02764e3362d6802cf667374bfd1c4084d213bb6efa1f01ffcf",
+  "donatix/deps.py": "bb6aec1c035ed322a0f28a9028b31d376e00d481f7a4947ff5cb93b1033bd5ba",
+  "donatix/google_auth.py": "9a9910e03d4949e3d372d2d5051ac862ccca6768a02ce3209938c036ad11eb95",
+  "donatix/security.py": "7655d66117198cd14e253862b5b1e29989d2dab0a5a286d44d4ea9a7a6f92758",
+  "donatix/sitecfg.py": "23c0bbf08992ffbff3c3dd07bd3dbf53af62e3ca38945886831c99dc16bc70f8",
+  "donatix/web.py": "3735b290cbdf42f38af86dca03fca3acc215477a0d1fa2671058ab92c43c282a"
+}

@@ -104,7 +104,8 @@ class _AuthScreenState extends State<AuthScreen> with WidgetsBindingObserver {
     setState(() => busy = true);
     try {
       final verifier = operationId() + operationId();
-      final d = await widget.api.post('/api/v1/mobile/oauth/prepare', {
+      final d = await widget.api.post(widget.api.usesExistingApi && widget.api.androidExtension
+          ? '/api/v1/android/oauth/prepare' : '/api/v1/mobile/oauth/prepare', {
         'challenge': sha256.convert(utf8.encode(verifier)).toString(),
       });
       oauth = {'ticket': d['ticket'], 'verifier': verifier, 'url': d['url']};
@@ -127,7 +128,8 @@ class _AuthScreenState extends State<AuthScreen> with WidgetsBindingObserver {
     final attempt = oauth!;
     oauthTimer?.cancel();
     try {
-      final d = await widget.api.post('/api/v1/mobile/oauth/claim', {
+      final d = await widget.api.post(widget.api.usesExistingApi && widget.api.androidExtension
+          ? '/api/v1/android/oauth/claim' : '/api/v1/mobile/oauth/claim', {
         'ticket': attempt['ticket'],
         'verifier': attempt['verifier'],
       });

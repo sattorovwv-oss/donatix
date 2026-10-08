@@ -42,6 +42,8 @@ def verify_server(platform, origin):
             server = json.loads(response.read(1024 * 1024))
     except urllib.error.HTTPError as error:
         if error.code == 404:
+            if platform == 'android':
+                return verify_existing_server(origin)
             return ['Mobile API was not found (HTTP 404): ' + endpoint +
                     '. Install the server_patch extension on the existing server.']
         return ['Mobile API returned HTTP ' + str(error.code) + ': ' + endpoint]
@@ -58,6 +60,38 @@ def verify_server(platform, origin):
     if platform == 'ios' and server.get('google_enabled') and not server.get('apple_enabled'):
         errors.append('Configure Sign in with Apple before releasing an iOS app with Google login')
     return errors
+
+
+def verify_existing_server(origin):
+    """Read-only check for Android compatibility; never recommend site patches."""
+    opener = urllib.request.build_opener(NoRedirect)
+    required = {
+        '/api/v1/me': 'get', '/api/v1/balance': 'get',
+        '/api/v1/categories': 'get', '/api/v1/products': 'get',
+        '/api/v1/products/{product_id}': 'get', '/api/v1/orders': 'post',
+        '/api/v1/orders/{order_id}': 'get', '/api/v1/payments/methods': 'get',
+        '/api/v1/payments': 'post', '/api/v1/payments/{payment_id}/receipt': 'post',
+    }
+    try:
+        request = urllib.request.Request(origin + '/api/openapi.json',
+                                         headers={'Accept': 'application/json'})
+        with opener.open(request, timeout=20) as response:
+            schema = json.loads(response.read(1024 * 1024))
+        paths = schema.get('paths') if isinstance(schema, dict) else None
+        if not isinstance(paths, dict) or any(
+                not isinstance(paths.get(path), dict) or method not in paths[path]
+                for path, method in required.items()):
+            return ['The existing API is missing required Android operations']
+        with opener.open(origin + '/login', timeout=20) as response:
+            page = response.read(1024 * 1024).decode('utf-8')
+        if 'action="/login"' not in page or 'name="csrf"' not in page:
+            return ['The existing login form is unavailable']
+        return []
+    except urllib.error.HTTPError as error:
+        return ['Existing API readiness check returned HTTP ' + str(error.code) +
+                '. Verify the API address without changing the website.']
+    except (OSError, ValueError, TypeError):
+        return ['Could not verify the existing API and login form over HTTPS']
 
 
 def check(platform, check_server=False, server_only=False):

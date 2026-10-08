@@ -21,7 +21,9 @@ class MainActivity : FlutterActivity() {
             try {
                 when (call.method) {
                     "configureNotifications" -> {
-                        NotificationSession.configure(this, call.argument<String>("origin")!!, call.argument<String>("cookie")!!, call.argument<Number>("userId")!!.toInt())
+                        NotificationSession.configure(this, call.argument<String>("origin")!!, call.argument<String>("cookie")!!, call.argument<Number>("userId")!!.toInt(),
+                            call.argument<Boolean>("existingApi") ?: false, call.argument<String>("apiKey"),
+                            call.argument<Boolean>("androidExtension") ?: false)
                         result.success(null)
                     }
                     "clearPrivateFiles" -> { File(cacheDir, "shared").deleteRecursively(); result.success(null) }

@@ -56,11 +56,11 @@ workflows:
     - name: Signed APK
       script: 'set -euo pipefail
 
-        flutter build apk --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 5 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
+        flutter build apk --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 7 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
     - name: Google Play AAB
       script: 'set -euo pipefail
 
-        flutter build appbundle --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 5 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
+        flutter build appbundle --release --build-number="${DONATIX_BUILD_NUMBER:-$(( ${PROJECT_BUILD_NUMBER:-0} + 7 ))}" --dart-define=DONATIX_URL="$DONATIX_URL"'
     - name: Verify signatures, 16 KB libraries and collect release files
       script: 'set -euo pipefail
 
