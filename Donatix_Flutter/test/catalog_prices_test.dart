@@ -153,15 +153,15 @@ void main() {
   test(
     'A failed section raises an error rather than returning an empty All list',
     () async {
-      final api = DonatixApi();
+      final api = DonatixApi()..usesExistingApi = true;
       api.dio.httpClientAdapter = SiteAdapter(
         (r) => r.uri.queryParameters['kind'] == 'topup'
             ? ResponseBody.fromString('Unavailable', 503)
             : catalogReply(r),
       );
       await expectLater(
-        api.existingSite.categories({}),
-        throwsA(isA<ApiFailure>()),
+        api.get('/api/v1/mobile/categories'),
+        throwsA(isA<ApiFailure>().having((e) => e.status, 'status', 503)),
       );
     },
   );
@@ -217,8 +217,21 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     const name = 'Free Fire Индонезия — полное название игры и региона';
     final api = DonatixApi();
-    api.dio.httpClientAdapter = SiteAdapter(
-      (r) => jsonResponse({
+    api.dio.httpClientAdapter = SiteAdapter((r) {
+      if (r.uri.path == '/api/v1/mobile/timezone') {
+        return jsonResponse({
+          'ok': true,
+          'choice': 'auto',
+          'zones': [
+            ['Asia/Dushanbe', 'Душанбе'],
+          ],
+        });
+      }
+      if (r.uri.path == '/api/v1/mobile/keys') {
+        return jsonResponse({'ok': true, 'active': true, 'items': []});
+      }
+      expect(r.uri.path, anyOf('/api/v1/me', '/api/v1/mobile/home'));
+      return jsonResponse({
         'ok': true,
         'login': 'client',
         'status': 'active',
@@ -235,8 +248,8 @@ void main() {
         ],
         'dcoin_enabled': false,
         'referral_enabled': false,
-      }),
-    );
+      });
+    });
     await tester.pumpWidget(
       MaterialApp(
         home: MediaQuery(
@@ -323,7 +336,12 @@ void main() {
           .widget<FilledButton>(find.byType(FilledButton))
           .onPressed!;
       action();
-      await tester.pumpAndSettle();
+      // The form remains busy while confirmation is open. Waiting for every
+      // animation to stop here would wait forever on its progress indicator.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(posted, isNull);
       await tester.tap(find.text('Подтвердить'));
       await tester.pumpAndSettle();
       expect(posted, isNotNull);
