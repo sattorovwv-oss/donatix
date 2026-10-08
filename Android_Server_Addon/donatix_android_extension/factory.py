@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 import time
@@ -63,6 +64,11 @@ class HandoffMiddleware:
                     message["headers"] = [(k, (PREFIX + "/oauth/confirm/" + ticket).encode() if k.lower() == b"location" else v)
                                           for k, v in headers]
                     message["headers"].append((b"cache-control", b"no-store"))
+                elif scope.get("path") == "/auth/google/callback" and location == b"/login":
+                    # Cancelled/failed mobile Google login must not tag a later normal web login.
+                    message = dict(message)
+                    message["headers"] = list(headers) + [(b"set-cookie",
+                        (COOKIE + "=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax").encode())]
             await send(message)
 
         await self.app(scope, receive, response)
@@ -96,8 +102,13 @@ def create_app(config=None, supplier=None, *, store_path=None, sender=None, star
     if Path(path).resolve() == Path(config.db_path).resolve():
         raise ValueError("The Android database must be different from the site database")
     store = Store(path, config.secret_key)
-    sender = sender or Sender(os.environ.get("DONATIX_FIREBASE_CREDENTIALS", ""),
-                              os.environ.get("DONATIX_ANDROID_FIREBASE_PROJECT", "donatix-660fc"))
+    if sender is None:
+        try:
+            sender = Sender(os.environ.get("DONATIX_FIREBASE_CREDENTIALS", ""),
+                            os.environ.get("DONATIX_ANDROID_FIREBASE_PROJECT", "donatix-660fc"))
+        except (OSError, ValueError, KeyError, TypeError):
+            logging.getLogger("donatix.android").warning("Android FCM credentials are unavailable or invalid; site remains active")
+            sender = Sender()
     worker = Worker(config, store, sender)
     original_lifespan = app.router.lifespan_context
 

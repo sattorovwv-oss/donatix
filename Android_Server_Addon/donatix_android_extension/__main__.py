@@ -12,6 +12,9 @@ def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     for name in ("httpx", "httpcore"):
         logging.getLogger(name).setLevel(logging.WARNING)
+    # Match the original CLI: load the existing .env before choosing worker count.
+    from donatix.config import Config
+    Config.from_env()
     raw = os.environ.get("DONATIX_WEB_WORKERS", "").strip()
     workers = int(raw) if raw.isdigit() and int(raw) > 0 else max(1, min(4, (os.cpu_count() or 1) - 1))
     import uvicorn

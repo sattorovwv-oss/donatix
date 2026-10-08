@@ -19,6 +19,11 @@ class Worker:
 
     def start(self):
         if self.sender.configured:
+            # Establish the first cursor before the site begins accepting requests.
+            try:
+                self.scan()
+            except Exception:
+                LOG.warning("Android notification initialization will retry")
             self.thread = threading.Thread(target=self.run, name="donatix-android-push", daemon=True)
             self.thread.start()
 
@@ -89,6 +94,8 @@ class Worker:
             if not live or not event or not current:
                 with self.store.connect() as c:
                     c.execute("DELETE FROM outbox WHERE id=?", (oid,))
+                    if not live:
+                        c.execute("DELETE FROM devices WHERE token_hash=? AND binding=?", (row["token_hash"], row["binding"]))
                 continue
             try:
                 self.sender(self.store.decrypt(row["token"]), {

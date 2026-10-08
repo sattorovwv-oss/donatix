@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -66,7 +67,12 @@ def main():
         f'Environment="DONATIX_ANDROID_FIREBASE_PROJECT={args.project}"\n'
         'ExecStart=\n'
         f'ExecStart=/usr/bin/env PYTHONPATH={args.installed_addon}:{args.site.resolve()} {command}\n')
+    if args.output.exists() and (args.output.is_symlink() or args.output.stat().st_uid != os.geteuid()):
+        raise ValueError("The staging directory must be owned by the current user and must not be a symlink")
     args.output.mkdir(parents=True, exist_ok=True, mode=0o700)
+    os.chmod(args.output, 0o700)
+    if any((args.output / name).is_symlink() for name in ("40-donatix-android.conf", "plan.json")):
+        raise ValueError("Refusing to write through a staging-file symlink")
     (args.output / "40-donatix-android.conf").write_text(content)
     (args.output / "plan.json").write_text(json.dumps({"site": str(args.site.resolve()), "service": args.service,
         "user": values["User"], "installed_addon": args.installed_addon, "state": args.state,

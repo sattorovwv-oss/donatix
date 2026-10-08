@@ -119,6 +119,43 @@ def test_web_google_login_without_mobile_cookie_still_goes_to_panel(setup, monke
     assert reply.headers["location"] == "/panel"
 
 
+def test_mobile_google_admin_must_complete_existing_two_factor(setup, monkeypatch):
+    app, config, _, _ = setup
+    config.alert_telegram_token, config.alert_telegram_chat_id = "test-token", "test-chat"
+    with db.connect(config.db_path) as c:
+        uid = accounts.create_user(c, email="admin@example.com", login="administrator", password="password123",
+                                   status="active", role="admin")
+    messages = []
+    import donatix.worker
+    monkeypatch.setattr(donatix.worker, "notify_admin", lambda _c, text, **_: messages.append(text))
+    monkeypatch.setattr(google_auth, "fetch_profile", lambda *_: {"sub": "google-admin", "email": "admin@example.com", "email_verified": True})
+    mobile, browser = TestClient(app), TestClient(app)
+    verifier, ticket = prepare(mobile)
+    browser.get(PREFIX + "/oauth/start/" + ticket, follow_redirects=False)
+    reply = browser.get("/auth/google", follow_redirects=False)
+    state = parse_qs(urlparse(reply.headers["location"]).query)["state"][0]
+    reply = browser.get("/auth/google/callback", params={"code": "code", "state": state}, follow_redirects=False)
+    assert reply.headers["location"] == "/login/code"
+    assert mobile.post(PREFIX + "/oauth/claim", json={"ticket": ticket, "verifier": verifier}).json()["pending"] is True
+    code = re.search(r"Код входа в админку: (\d+)", messages[0]).group(1)
+    form_token = csrf(browser, "/login/code")
+    reply = browser.post("/login/code", data={"csrf": form_token, "code": code}, follow_redirects=False)
+    assert reply.headers["location"] == PREFIX + "/oauth/confirm/" + ticket
+    browser.post(PREFIX + "/oauth/confirm/" + ticket, data={"csrf": csrf(browser, PREFIX + "/oauth/confirm/" + ticket)})
+    assert mobile.post(PREFIX + "/oauth/claim", json={"ticket": ticket, "verifier": verifier}).json()["pending"] is False
+    assert mobile.get(PREFIX + "/session").json()["user_id"] == uid
+
+
+def test_invalid_firebase_key_does_not_stop_the_site(setup, monkeypatch, tmp_path):
+    _, config, _, _ = setup
+    monkeypatch.setenv("DONATIX_FIREBASE_CREDENTIALS", str(tmp_path / "absent.json"))
+    app = create_app(config, MockSupplier(), store_path=tmp_path / "separate.db", start_push=False)
+    client = TestClient(app)
+    assert client.get("/login").status_code == 200
+    status = client.get(PREFIX + "/config").json()
+    assert status["google_enabled"] is True and status["fcm_enabled"] is False
+
+
 def test_google_expired_ticket_and_csrf_are_rejected(setup):
     app, _, _, _ = setup
     client, _ = login(app)
@@ -127,6 +164,17 @@ def test_google_expired_ticket_and_csrf_are_rejected(setup):
     with app.state.android_store.connect() as c:
         c.execute("UPDATE flows SET expires=0 WHERE id=?", (ticket,))
     assert client.get(PREFIX + "/oauth/start/" + ticket).status_code == 410
+
+
+def test_cancelled_google_flow_does_not_tag_a_later_web_login(setup):
+    app, _, _, _ = setup
+    browser = TestClient(app)
+    _, ticket = prepare(browser)
+    browser.get(PREFIX + "/oauth/start/" + ticket, follow_redirects=False)
+    assert browser.cookies.get("dx_android_oauth")
+    reply = browser.get("/auth/google/callback", params={"error": "access_denied"}, follow_redirects=False)
+    assert reply.headers["location"] == "/login"
+    assert browser.cookies.get("dx_android_oauth") is None
 
 
 def test_push_requires_live_cookie_csrf_and_same_origin(setup):
