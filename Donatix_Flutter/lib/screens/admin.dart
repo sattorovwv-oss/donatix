@@ -382,6 +382,10 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget table(dom.Element e) {
     final rows = e.querySelectorAll('tr');
+    if (route == '/admin/products' && MediaQuery.sizeOf(context).width < 700 &&
+        rows.isNotEmpty && rows.first.querySelector('th') != null) {
+      return productPrices(rows);
+    }
     int span(dom.Element cell) =>
         (int.tryParse(cell.attributes['colspan'] ?? '') ?? 1).clamp(1, 64);
     final count = rows.fold<int>(
@@ -487,6 +491,37 @@ class _AdminScreenState extends State<AdminScreen> {
         ),
       ),
     );
+  }
+
+  Widget productPrices(List<dom.Element> rows) {
+    final labels = rows.first.children.map((e) => e.text.trim()).toList();
+    return vertical([
+      for (final row in rows.skip(1))
+        if (row.children.length == labels.length && row.children.length >= 4)
+          SiteCard(
+            child: vertical([
+              SelectableText(row.children.first.text.trim(),
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+              SelectableText('ID: ${row.children[1].text.trim()}',
+                style: TextStyle(fontSize: 12, color: colors.muted)),
+              if (RegExp(r'opacity:\s*\.?5').hasMatch(row.attributes['style'] ?? ''))
+                Text('Скрыт от клиентов', style: TextStyle(color: colors.muted)),
+              for (var i = 2; i < row.children.length - 1; i++)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: Text(labels[i], style: TextStyle(color: colors.muted))),
+                    const SizedBox(width: 12),
+                    Flexible(child: SelectableText(row.children[i].text.trim(),
+                      style: const TextStyle(fontWeight: FontWeight.w600))),
+                  ],
+                ),
+              node(row.children.last),
+            ], gap: 10),
+          )
+        else
+          node(row),
+    ], gap: 12);
   }
 
   Widget chart(dom.Element e) {
@@ -1493,6 +1528,17 @@ class _AdminScreenState extends State<AdminScreen> {
   List<Widget> listing(dom.Element main) => [
     for (final e in main.children.where((e) => e.classes.contains('page-hero')))
       node(e),
+    if (route == '/admin/products')
+      SiteCard(child: vertical([
+        const Text('Цены и наценки',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
+        const Text('Закупочная цена приходит от поставщика. Продажные цены рассчитываются по наценке уровня, раздела или клиента.'),
+        FilledButton.icon(
+          onPressed: () => link('/admin/settings'),
+          icon: const Icon(Icons.price_change_outlined),
+          label: const Text('Изменить наценки'),
+        ),
+      ])),
     for (final e in main.children.where(
       (e) => !e.classes.contains('page-hero'),
     ))
@@ -1528,6 +1574,12 @@ class _AdminScreenState extends State<AdminScreen> {
           : node(e),
   ];
   List<Widget> settings(dom.Element main) => [
+    if (route == '/admin/settings')
+      OutlinedButton.icon(
+        onPressed: () => link('/admin/products'),
+        icon: const Icon(Icons.inventory_2_outlined),
+        label: const Text('Посмотреть цены каталога'),
+      ),
     for (final e in main.children)
       if (e.localName == 'form')
         NativeForm(

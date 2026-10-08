@@ -129,12 +129,20 @@ class _CatalogScreenState extends State<CatalogScreen> {
                                 onTap: () => Navigator.push(
                                   context,
                                   MaterialPageRoute<void>(
-                                    builder: (_) => PacksScreen(
+                                    builder: (_) => switch (text(p['kind'])) {
+                                      'telegram_stars' || 'telegram_premium' => TelegramScreen(
+                                        api: widget.api,
+                                        premium: text(p['kind']) == 'telegram_premium',
+                                      ),
+                                      'steam_topup' => SteamScreen(api: widget.api),
+                                      'steam_gift' => SteamGiftScreen(api: widget.api),
+                                      _ => PacksScreen(
                                       api: widget.api,
                                       category: text(p['category_id']),
                                       kind: text(p['kind']),
                                       title: text(p['category_name']),
                                     ),
+                                    },
                                   ),
                                 ),
                                 child: Padding(
@@ -147,15 +155,18 @@ class _CatalogScreenState extends State<CatalogScreen> {
                                       const SizedBox(height: 12),
                                       Text(
                                         text(p['category_name']),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
                                           fontWeight: FontWeight.w700,
                                         ),
                                       ),
                                       const SizedBox(height: 6),
+                                      if (text(p['region_label']).isNotEmpty)
+                                        Text(text(p['region_label']),
+                                          style: Theme.of(context).textTheme.bodySmall),
                                       Text(
-                                        'от ${widget.api.displayPrice(p['from_price'])}',
+                                        p['from_price'] == null
+                                            ? text(p['price_note'])
+                                            : 'от ${widget.api.displayPrice(p['from_price'])}',
                                         style: Theme.of(
                                           context,
                                         ).textTheme.bodySmall,
@@ -229,6 +240,12 @@ class _PacksScreenState extends State<PacksScreen> {
             .map((p) => text(p['region']))
             .where((s) => s.isNotEmpty)
             .toSet();
+        final regionTitles = <String, String>{
+          for (final p in products)
+            if (text(p['region']).isNotEmpty)
+              text(p['region']): text(p['region_title']).isEmpty
+                  ? text(p['region']) : text(p['region_title']),
+        };
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -257,7 +274,7 @@ class _PacksScreenState extends State<PacksScreen> {
                 children: [
                   for (final r in ['', ...regions])
                     ChoiceChip(
-                      label: Text(r.isEmpty ? 'Все регионы' : r),
+                      label: Text(r.isEmpty ? 'Все регионы' : regionTitles[r] ?? r),
                       selected: (region ?? '') == r,
                       onSelected: (_) => setState(() {
                         region = r;

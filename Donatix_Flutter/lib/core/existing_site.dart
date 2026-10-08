@@ -605,8 +605,59 @@ class ExistingSiteApi {
   }
 
   Future<Map<String, dynamic>> categories(Map<String, dynamic> query) async {
-    final doc = await page('/panel/catalog', query: query, authenticated: false);
+    final kind = (query['kind'] ?? '').toString();
+    // The site's unfiltered page is a capped list of packages, not games.
+    // Read the complete category pages instead so later sections aren't lost
+    // behind the first 500 game keys.
+    final sections = kind.isEmpty
+        ? ['topup', 'telegram', 'steam_topup', 'steam_gift', 'gift_card', 'game_key']
+        : [kind.startsWith('telegram_') ? 'telegram' : kind];
+    final lists = await Future.wait(sections.map((section) async {
+      final doc = await page('/panel/catalog', query: {
+        ...query, 'kind': section,
+        if (section == 'telegram') 'q': '',
+      }, authenticated: false);
+      if (section == 'telegram') {
+        return [
+          for (final service in ['telegram_stars', 'telegram_premium'])
+            if (kind.isEmpty || kind == service || kind == 'telegram')
+              if (telegramProducts(doc, service).isNotEmpty)
+                {
+                  'category_id': service,
+                  'category_name': service == 'telegram_stars'
+                      ? 'Telegram Stars — звёзды' : 'Telegram Premium',
+                  'kind': service, 'image_url': null,
+                  'from_price': null,
+                  'price_note': service == 'telegram_stars'
+                      ? 'Выберите количество звёзд' : 'Выберите срок подписки',
+                  'regions': <String>[],
+                },
+        ];
+      }
+      if (section == 'steam_topup' || section == 'steam_gift') {
+        return [
+          for (final card in doc.querySelectorAll('.pack-card'))
+            {
+              'category_id': Uri.parse(card.attributes['href'] ?? '').pathSegments.last,
+              'category_name': text(card.querySelector('.pack-name')),
+              'kind': section, 'image_url': card.querySelector('img')?.attributes['src'],
+              'from_price': null, 'price_note': 'Рассчитать стоимость',
+              'regions': <String>[],
+            },
+        ];
+      }
+      return categoryCards(doc);
+    }));
+    final search = (query['q'] ?? '').toString().trim().toLowerCase();
+    final seen = <String>{};
     return {'ok': true, 'items': [
+      for (final item in lists.expand((items) => items))
+        if ((search.isEmpty || '${item['category_name']} ${item['kind']}'.toLowerCase().contains(search)) &&
+            seen.add('${item['kind']}|${item['category_id']}')) item,
+    ]};
+  }
+
+  List<Map<String, dynamic>> categoryCards(dom.Document doc) => [
       for (final card in doc.querySelectorAll('.game-card'))
         {
           'category_id': Uri.parse(card.attributes['href'] ?? '').queryParameters['category'] ?? '',
@@ -614,10 +665,19 @@ class ExistingSiteApi {
           'kind': Uri.parse(card.attributes['href'] ?? '').queryParameters['kind'] ?? '',
           'image_url': card.querySelector('img')?.attributes['src'],
           'from_price': usd(card.querySelector('.game-meta')),
+          'region_label': card.querySelectorAll('.game-meta span').length > 1
+              ? text(card.querySelectorAll('.game-meta span').last) : '',
           'regions': <String>[],
         }
-    ]};
+    ];
+
+  String popularTitle(dom.Element link) {
+    // media() contains a nested span with initials such as FF/PM. The title
+    // is the last direct span child of the link, not span:last-child below it.
+    final title = text(link.children.where((e) => e.localName == 'span').lastOrNull);
+    return title.isNotEmpty ? title : link.querySelector('img')?.attributes['alt'] ?? '';
   }
+
 
   Future<Map<String, dynamic>> guestProducts(Map<String, dynamic> query) async {
     final doc = await page('/panel/catalog', query: {
@@ -765,7 +825,7 @@ class ExistingSiteApi {
       'tg_channel': doc.querySelector('.side-tg')?.attributes['href'] ?? '',
       'popular': [
         for (final link in doc.querySelectorAll('.pop-quick .pop-tile'))
-          {'title': text(link.querySelector('span:last-child')),
+          {'title': popularTitle(link),
             'href': link.attributes['href'] ?? '',
             'image_url': link.querySelector('img')?.attributes['src'],
             'kind': Uri.parse(link.attributes['href'] ?? '').queryParameters['kind'] ?? ''}

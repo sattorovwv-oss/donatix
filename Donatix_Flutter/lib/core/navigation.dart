@@ -25,6 +25,7 @@ Future<void> openDonatixLink(
   BuildContext context,
   DonatixApi api,
   String value,
+  {String? title}
 ) async {
   final root = Uri.parse(DonatixApi.origin),
       uri = Uri.parse(DonatixApi.origin).resolve(value);
@@ -66,7 +67,7 @@ Future<void> openDonatixLink(
         api: api,
         category: query['category']!,
         kind: query['kind'] ?? '',
-        title: 'Каталог',
+        title: title ?? 'Каталог',
         region: query['region'],
       );
     } else {
