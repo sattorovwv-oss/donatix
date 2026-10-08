@@ -47,8 +47,9 @@ String catalogDisplayName(String name) => name.replaceAllMapped(
   RegExp(r'\(([A-Za-z]+(?:\s*/\s*[A-Za-z]+)*)\)'),
   (match) {
     final codes = match.group(1)!.split('/').map((s) => s.trim().toUpperCase());
-    if (codes.any((code) => !catalogRegionNames.containsKey(code)))
+    if (codes.any((code) => !catalogRegionNames.containsKey(code))) {
       return match.group(0)!;
+    }
     return '(${codes.map((code) => catalogRegionNames[code]!).join(' / ')})';
   },
 );
