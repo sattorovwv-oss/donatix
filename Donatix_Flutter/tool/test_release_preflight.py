@@ -81,12 +81,30 @@ class ReleaseChecks(unittest.TestCase):
         self.assertEqual(list(self.root.iterdir()), [])
         self.opener.return_value.open.assert_called_once()
 
-    def test_readiness_reports_missing_mobile_api(self):
+    def test_missing_existing_api_does_not_recommend_site_modifications(self):
         self.opener.return_value.open.side_effect = urllib.error.HTTPError('https://donatix.example', 404, '', {}, None)
         errors = preflight.check('android', server_only=True)
         self.assertIn('HTTP 404', errors[0])
-        self.assertIn('/api/v1/mobile/config', errors[0])
-        self.assertIn('server_patch', errors[0])
+        self.assertNotIn('server_patch', errors[0])
+
+    def test_android_accepts_existing_api_without_mobile_extension(self):
+        required = {
+            '/api/v1/me': 'get', '/api/v1/balance': 'get',
+            '/api/v1/categories': 'get', '/api/v1/products': 'get',
+            '/api/v1/products/{product_id}': 'get', '/api/v1/orders': 'post',
+            '/api/v1/orders/{order_id}': 'get', '/api/v1/payments/methods': 'get',
+            '/api/v1/payments': 'post', '/api/v1/payments/{payment_id}/receipt': 'post',
+        }
+        self.opener.return_value.open.side_effect = [
+            urllib.error.HTTPError('https://donatix.example', 404, '', {}, None),
+            io.BytesIO(json.dumps({'paths': {p: {m: {}} for p, m in required.items()}}).encode()),
+            io.BytesIO(b'<form action="/login"><input name="csrf"></form>'),
+        ]
+        self.assertEqual(preflight.check('android', server_only=True), [])
+
+    def test_ios_still_requires_its_mobile_server_support(self):
+        self.opener.return_value.open.side_effect = urllib.error.HTTPError('https://donatix.example', 404, '', {}, None)
+        self.assertIn('server_patch', preflight.check('ios', server_only=True)[0])
 
     def test_readiness_reports_server_failure(self):
         self.opener.return_value.open.side_effect = urllib.error.HTTPError('https://donatix.example', 503, '', {}, None)

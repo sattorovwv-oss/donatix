@@ -1,0 +1,50 @@
+name: Android client validation
+on:
+  push:
+    branches: [codex/android-existing-api]
+permissions:
+  contents: read
+jobs:
+  site-addon:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare the pristine site fixture (no keys or databases)
+        run: |
+          python3 Android_Server_Addon/prepare_fixture.py "$RUNNER_TEMP/donatix-site"
+      - name: Install verification dependencies
+        run: python3 -m pip install -r "$RUNNER_TEMP/donatix-site/donatix/requirements.txt" pytest
+      - name: Android module regression tests
+        run: PYTHONPATH="$RUNNER_TEMP/donatix-site:$GITHUB_WORKSPACE/Android_Server_Addon" python3 -m pytest Android_Server_Addon/tests -q
+      - name: Original site regression tests through the wrapper
+        run: PYTHONPATH="$RUNNER_TEMP/donatix-site:$GITHUB_WORKSPACE/Android_Server_Addon" python3 Android_Server_Addon/verify_original.py "$RUNNER_TEMP/donatix-site"
+  flutter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: Donatix_Flutter
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - name: Install pinned Flutter
+        run: |
+          git clone --depth 1 --branch 3.35.4 https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter"
+          echo "$RUNNER_TEMP/flutter/bin" >> "$GITHUB_PATH"
+      - name: Dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze
+      - name: Regression tests
+        run: flutter test
+      - name: Release tooling checks
+        run: python3 -m unittest discover -s tool -p 'test_*.py'
+      - name: Compile Android plugins (internal validation only)
+        run: |
+          if git diff --quiet HEAD^ HEAD -- android pubspec.yaml pubspec.lock; then
+            echo "Android native inputs unchanged; compilation passed in the preceding validation run."
+          else
+            flutter build apk --debug --dart-define=DONATIX_URL=https://donatix.tj
+          fi

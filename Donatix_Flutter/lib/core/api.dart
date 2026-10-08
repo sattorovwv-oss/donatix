@@ -1,10 +1,15 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:decimal/decimal.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:html/parser.dart' as html;
+import 'package:html/dom.dart' as dom;
+
+part 'existing_site.dart';
 
 class ApiFailure implements Exception {
   final String message;
@@ -14,8 +19,8 @@ class ApiFailure implements Exception {
   String toString() => message;
 }
 
-/// Only the signed session cookie is persisted. Passwords and supplier keys
-/// never enter storage. No automatic retries for financial POST requests.
+/// The account session and its personal API key use secure storage. Passwords
+/// and supplier credentials are never persisted. No automatic financial retry.
 class DonatixApi {
   static const origin = String.fromEnvironment(
     'DONATIX_URL',
@@ -23,6 +28,28 @@ class DonatixApi {
   );
   final storage = const FlutterSecureStorage();
   late final Dio dio;
+  bool usesExistingApi = false;
+  bool androidExtension = false;
+  bool androidPushEnabled = false;
+  String? personalApiKey;
+  bool personalKeyVerified = false;
+  String? get personalKeyIdentity => personalApiKey == null ? null :
+      sha256.convert(utf8.encode(personalApiKey!)).toString();
+  int _sessionEpoch = 0;
+  Future<void> _cookieWrites = Future.value();
+  Future<void> _persistCookie(String? value, int epoch) {
+    final next = _cookieWrites.catchError((Object _) {}).then((_) async {
+      if (epoch != _sessionEpoch) return;
+      if (value == null) {
+        await storage.delete(key: 'donatix_session');
+      } else {
+        await storage.write(key: 'donatix_session', value: value);
+      }
+    });
+    _cookieWrites = next;
+    return next;
+  }
+  late final ExistingSiteApi existingSite = ExistingSiteApi(this);
   String? session;
   String csrf = '';
   String login = '';
@@ -91,25 +118,38 @@ class DonatixApi {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (o, h) {
+          if (o.uri.origin != Uri.parse(origin).origin) {
+            h.reject(DioException(
+              requestOptions: o,
+              error: const ApiFailure('Адрес запроса не принадлежит Donatix.'),
+            ));
+            return;
+          }
+          o.extra['donatix_session_epoch'] = _sessionEpoch;
           if (session != null) {
-            o.headers['Cookie'] =
-                'dx_session=$session; dx_cur=$displayCurrency';
+            o.headers.putIfAbsent('Cookie', () =>
+                'dx_session=$session; dx_cur=$displayCurrency');
+          }
+          if (usesExistingApi && userId > 0 && personalApiKey != null &&
+              o.uri.path.startsWith('/api/')) {
+            o.headers.putIfAbsent('X-API-Key', () => personalApiKey);
           }
           if (csrf.isNotEmpty) o.headers['X-CSRF-Token'] = csrf;
           h.next(o);
         },
         onResponse: (r, h) async {
+          if (r.requestOptions.extra['donatix_session_epoch'] != _sessionEpoch ||
+              r.requestOptions.extra['donatix_ignore_cookie'] == true) {
+            h.next(r);
+            return;
+          }
           for (final raw in r.headers['set-cookie'] ?? <String>[]) {
             final cookie = Cookie.fromSetCookieValue(raw);
             if (cookie.name != 'dx_session') continue;
             session = cookie.value.isEmpty || cookie.maxAge == 0
                 ? null
                 : cookie.value;
-            if (session == null) {
-              await storage.delete(key: 'donatix_session');
-            } else {
-              await storage.write(key: 'donatix_session', value: session);
-            }
+            await _persistCookie(session, _sessionEpoch);
           }
           await onSessionChanged?.call();
           h.next(r);
@@ -133,7 +173,15 @@ class DonatixApi {
   }
 
   Future<Map<String, dynamic>> bootstrap() async {
-    final d = await get('/api/v1/mobile-session');
+    if (usesExistingApi) return existingSite.bootstrap();
+    late Map<String, dynamic> d;
+    try {
+      d = await get('/api/v1/mobile-session');
+    } on ApiFailure catch (e) {
+      if (e.status != 404) rethrow;
+      await existingSite.configuration();
+      return existingSite.bootstrap();
+    }
     if (d['csrf'] is! String ||
         d['login'] is! String ||
         d['user_id'] is! int ||
@@ -150,12 +198,18 @@ class DonatixApi {
   }
 
   Future<void> clear() async {
+    final owner = userId;
+    _sessionEpoch++;
     session = null;
+    personalApiKey = null;
+    personalKeyVerified = false;
+    existingSite.reset();
     userId = 0;
     role = 'client';
     status = '';
     csrf = '';
-    await storage.delete(key: 'donatix_session');
+    await _persistCookie(null, _sessionEpoch);
+    if (owner > 0) await storage.delete(key: 'donatix_rest_key_$owner');
     try {
       await const MethodChannel(
         'tj.donatix.app/native',
@@ -192,14 +246,21 @@ class DonatixApi {
     Map<String, dynamic>? query,
     String? idempotency,
   }) async {
+    final owner = userId, epoch = _sessionEpoch;
     try {
-      if (userId == 0 && path == '/api/v1/accounts/check') {
+      if (usesExistingApi) {
+        final translated = await existingSite.request(
+          method, path, data: data, query: query, idempotency: idempotency,
+        );
+        if (translated != null) return translated;
+      }
+      if (!usesExistingApi && userId == 0 && path == '/api/v1/accounts/check') {
         path = '/api/v1/mobile/public/accounts/check';
       }
-      if (userId == 0 && path.startsWith('/api/v1/mobile/gamekeys/')) {
+      if (!usesExistingApi && userId == 0 && path.startsWith('/api/v1/mobile/gamekeys/')) {
         path = path.replaceFirst('/api/v1/mobile/', '/api/v1/mobile/public/');
       }
-      if (method == 'GET' && userId == 0) {
+      if (!usesExistingApi && method == 'GET' && userId == 0) {
         if (path == '/api/v1/mobile/categories') {
           path = '/api/v1/mobile/public/categories';
         } else if (path.startsWith('/api/v1/products') ||
@@ -216,6 +277,9 @@ class DonatixApi {
           headers: {if (idempotency != null) 'Idempotency-Key': idempotency},
         ),
       );
+      if (epoch != _sessionEpoch || owner != userId) {
+        throw const ApiFailure('Аккаунт изменился. Проверьте историю перед повтором.', 401);
+      }
       dynamic d = r.data;
       if (d is String) {
         try {
@@ -229,6 +293,10 @@ class DonatixApi {
         onSessionExpired?.call();
       }
       if (d is! Map || r.statusCode! >= 300 || d['ok'] == false) {
+        if (r.statusCode == 404 && path == '/api/v1/mobile/config' &&
+            (d is! Map || '${d['error'] ?? ''}'.toLowerCase() == 'not found')) {
+          return existingSite.configuration();
+        }
         final missingModule =
             r.statusCode == 404 &&
             (path == '/api/v1/mobile-session' ||
@@ -275,6 +343,12 @@ class DonatixApi {
     Map<String, String> fields, {
     bool register = false,
   }) async {
+    _sessionEpoch++;
+    personalApiKey = null;
+    personalKeyVerified = false;
+    userId = 0;
+    role = 'client';
+    existingSite.reset();
     final route = register ? '/register' : '/login';
     final page = await dio.get<String>(
       route,

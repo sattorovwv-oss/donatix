@@ -78,7 +78,7 @@ class HomeScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 18.4),
             ),
           ),
-          if (Decimal.parse(text(me['balance'])) <
+          if (me['low_balance'] == true || Decimal.parse(text(me['balance'])) <
               Decimal.parse(text(me['low_usd'] ?? '0')))
             Surface(
               child: Row(
@@ -273,7 +273,8 @@ class HomeScreen extends StatelessWidget {
                 ),
               ),
             ),
-          if ((num.tryParse(text(me['referral_percent'])) ?? 0) > 0)
+          if (me['referral_enabled'] == true ||
+              (num.tryParse(text(me['referral_percent'])) ?? 0) > 0)
             _ReferralBanner(
               onTap: () => openDonatixLink(context, api, '/panel/referrals'),
             ),

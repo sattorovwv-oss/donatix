@@ -75,7 +75,9 @@ class _AccountScreenState extends State<AccountScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Пригласите друзей и получайте ${d['percent']}% по правилам сервиса.',
+                      d['percent'] == null
+                          ? 'Пригласите друзей и получайте вознаграждения по правилам сервиса.'
+                          : 'Пригласите друзей и получайте ${d['percent']}% по правилам сервиса.',
                     ),
                     const SizedBox(height: 16),
                     SelectableText(text(d['link'])),
@@ -198,7 +200,7 @@ class _AccountScreenState extends State<AccountScreen> {
                       if (widget.section == 'logins') ...[
                         InfoRow('IP', text(r['ip'])),
                         Text(text(r['user_agent'])),
-                        InfoRow(
+                        if (r['session_status_available'] != false) InfoRow(
                           'Сессия',
                           r['ended_at'] == null ? 'Активна' : 'Завершена',
                         ),
@@ -222,7 +224,8 @@ class _AccountScreenState extends State<AccountScreen> {
                     ),
                     Text('$page'),
                     TextButton(
-                      onPressed: page * 20 < (d['total'] as int)
+                      onPressed: d['has_next'] == true ||
+                          (d['has_next'] == null && page * (d['limit'] as int? ?? 20) < (d['total'] as int))
                           ? () => setState(() => page++)
                           : null,
                       child: const Text('Далее'),

@@ -99,7 +99,8 @@ Future<void> _checkout(
   final key = operationId();
   await api.storage.write(
     key: pendingKey,
-    value: jsonEncode({'key': key, 'body': body, 'title': title}),
+    value: jsonEncode({'key': key, 'body': body, 'title': title,
+      if (api.usesExistingApi) 'personal_key_identity': api.personalKeyIdentity}),
   );
   try {
     api.requireAccount(owner);
@@ -217,6 +218,33 @@ class _PendingOrderScreenState extends State<PendingOrderScreen> {
     });
     try {
       widget.api.requireAccount(owner);
+      if (widget.api.usesExistingApi &&
+          pending!['personal_key_identity'] != widget.api.personalKeyIdentity) {
+        throw const ApiFailure(
+          'Личный API-ключ изменился. Для исключения повторного списания проверьте историю и обратитесь в поддержку.',
+          409,
+        );
+      }
+      if (widget.api.usesExistingApi) {
+        final body = pending!['body'] as Map;
+        if (body['items'] == null) {
+          final quote = await widget.api.post('/api/v1/mobile/orders/quote', body);
+          widget.api.requireAccount(owner);
+          if (!mounted || !await confirmAction(context, 'Проверить покупку?',
+              'Если запрос уже выполнен, сервер вернёт его результат. Если он не дошёл, заказ будет оформлен сейчас.\n'
+              'Текущая стоимость: ${widget.api.displayPrice(quote['total_usd'])}.\n'
+              'Сначала проверьте историю заказов.')) { return; }
+          body['expected_total_usd'] = quote['total_usd'];
+        } else {
+          final quote = await widget.api.post('/api/v1/mobile/cart/quote', body);
+          widget.api.requireAccount(owner);
+          if (!mounted || !await confirmAction(context, 'Восстановить корзину?',
+              'Уже оформленные пакеты будут найдены по ключам операций. Остальные будут куплены сейчас.\n'
+              'Текущая стоимость всей корзины: ${widget.api.displayPrice(quote['total_usd'])}.\n'
+              'Сначала проверьте историю заказов.')) { return; }
+          body['items'] = quote['items'];
+        }
+      }
       final d = await widget.api.post(
         text(pending!['endpoint']).isEmpty
             ? '/api/v1/orders'

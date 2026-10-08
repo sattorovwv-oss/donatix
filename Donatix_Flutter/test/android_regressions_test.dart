@@ -107,7 +107,8 @@ void main() {
       configuring.complete();
       await first;
       expect(calls.where((c) => c == 'stopNotifications'), hasLength(1));
-      expect(service.configured, 'true|0|null');
+      await service.synchronize();
+      expect(calls.where((c) => c == 'stopNotifications'), hasLength(1));
     },
   );
 
@@ -255,26 +256,31 @@ void main() {
   });
 
   test(
-    'Missing mobile API is distinct from a missing catalogue product',
+    'Missing mobile API probes the existing login form before reporting failure',
     () async {
       final api = DonatixApi();
+      final paths = <String>[];
       api.dio.httpClientAdapter = OfflineAdapter(
-        (r) => jsonReply({
+        (r) {
+          paths.add(r.uri.path);
+          return jsonReply({
           'ok': false,
           'error': 'Not Found',
           'code': 'not_found',
-        }, 404),
+        }, 404);
+        },
       );
       await expectLater(
         api.get('/api/v1/mobile/config'),
         throwsA(
           isA<ApiFailure>().having(
-            (e) => e.message,
-            'message',
-            contains('Мобильный API'),
+            (e) => e.status,
+            'status',
+            404,
           ),
         ),
       );
+      expect(paths, ['/api/v1/mobile/config', '/login']);
       api.dio.httpClientAdapter = OfflineAdapter(
         (r) => jsonReply({
           'ok': false,

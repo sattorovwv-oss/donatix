@@ -25,6 +25,7 @@ object NativePush {
     fun register(c: Context, replace: Boolean = false) {
         if (!configured(c) || NotificationSession.prefs(c).getInt("userId", 0) == 0) return
         val prefs = NotificationSession.prefs(c)
+        if (prefs.getBoolean("existing_api", false) && !prefs.getBoolean("android_extension", false)) return
         if (!replace && prefs.getBoolean("push_registered", false) && prefs.getBoolean("push_server", false)) return
         FirebaseMessaging.getInstance().isAutoInitEnabled = true
         val request = OneTimeWorkRequestBuilder<PushRegistrationWorker>()
@@ -45,6 +46,8 @@ object NativePush {
     }
     fun status(c: Context): Map<String, Any> = mapOf(
         "firebase" to configured(c),
+        "existingApi" to NotificationSession.prefs(c).getBoolean("existing_api", false),
+        "androidExtension" to NotificationSession.prefs(c).getBoolean("android_extension", false),
         "registered" to NotificationSession.prefs(c).getBoolean("push_registered", false),
         "server" to NotificationSession.prefs(c).getBoolean("push_server", false),
         "permission" to NotificationManagerCompat.from(c).areNotificationsEnabled(),
@@ -53,8 +56,10 @@ object NativePush {
 }
 
 class PushRegistrationWorker(c: Context, params: WorkerParameters) : Worker(c, params) {
-    private fun exchange(origin: String, cookie: String, csrf: String?, body: JSONObject?): JSONObject {
-        val endpoint = if (body == null) "/api/v1/mobile-session" else "/api/v1/mobile/push/register"
+    private fun exchange(origin: String, cookie: String, csrf: String?, body: JSONObject?, extension: Boolean): JSONObject {
+        val endpoint = if (extension) {
+            if (body == null) "/api/v1/android/session" else "/api/v1/android/push/register"
+        } else if (body == null) "/api/v1/mobile-session" else "/api/v1/mobile/push/register"
         val connection = URL(origin.trimEnd('/') + endpoint).openConnection() as HttpURLConnection
         try {
             connection.instanceFollowRedirects = false
@@ -77,17 +82,19 @@ class PushRegistrationWorker(c: Context, params: WorkerParameters) : Worker(c, p
         val uid = p.getInt("userId", 0)
         val origin = p.getString("origin", null) ?: return Result.success()
         val cookie = NotificationSession.cookie(c) ?: return Result.success()
-        if (uid == 0 || !NativePush.configured(c)) return Result.success()
+        val extension = p.getBoolean("android_extension", false)
+        if (uid == 0 || !NativePush.configured(c) || (p.getBoolean("existing_api", false) && !extension)) return Result.success()
         return try {
             val token = com.google.android.gms.tasks.Tasks.await(FirebaseMessaging.getInstance().token,
                 30, java.util.concurrent.TimeUnit.SECONDS)
-            val session = exchange(origin, cookie, null, null)
+            val session = exchange(origin, cookie, null, null, extension)
             if (session.getInt("user_id") != uid || p.getInt("userId", 0) != uid || isStopped) return Result.success()
             if (!NotificationSession.current(c, uid, cookie)) return Result.retry()
             val reply = exchange(origin, cookie, session.getString("csrf"), JSONObject()
-                .put("device_id", NativePush.deviceId(c)).put("token", token).put("platform", "android"))
+                .put("device_id", NativePush.deviceId(c)).put("token", token).put("platform", "android"), extension)
             if (NotificationSession.current(c, uid, cookie) && !isStopped) {
-                NotificationSession.registered(c, uid, cookie, reply.optBoolean("configured"))
+                NotificationSession.registered(c, uid, cookie, reply.optBoolean("configured"),
+                    if (extension) reply.getString("binding") else null)
             }
             if (p.getInt("userId", 0) == uid && !NotificationSession.current(c, uid, cookie) && !isStopped) Result.retry()
             else Result.success()
@@ -102,6 +109,10 @@ class DonatixMessagingService : FirebaseMessagingService() {
         val owner = message.data["user_id"]?.toIntOrNull() ?: return
         val id = message.data["notification_id"]?.toLongOrNull() ?: return
         if (owner == 0 || owner != p.getInt("userId", 0) || NotificationSession.cookie(this) == null) return
+        if (p.getBoolean("android_extension", false)) {
+            val expected = p.getString("push_binding", null) ?: return
+            if (message.data["binding"] != expected) return
+        }
         val link = message.data["link"] ?: "/panel/notifications"
         // Only internal, relative links can be opened from an FCM payload.
         val safe = if (link.startsWith("/panel/") && !link.startsWith("//")) link else "/panel/notifications"
