@@ -332,8 +332,9 @@ void main() {
       expect(posted!['markup_steam_topup'], '');
       for (final e in original.querySelectorAll('input,textarea,select')) {
         final name = e.attributes['name']!;
-        if (['csrf', 'markup_bronze', 'markup_steam_topup'].contains(name))
+        if (['csrf', 'markup_bronze', 'markup_steam_topup'].contains(name)) {
           continue;
+        }
         if (e.attributes['type'] == 'checkbox') {
           if (e.attributes.containsKey('checked')) {
             expect(posted![name], e.attributes['value'] ?? 'on', reason: name);

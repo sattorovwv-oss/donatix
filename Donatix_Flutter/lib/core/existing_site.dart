@@ -35,8 +35,9 @@ class ExistingSiteApi {
         element.querySelector(r'[title^="$"]')?.attributes['title'];
     final source = titled ?? text(element);
     final found = RegExp(r'\$([+-]?\d+(?:[.,]\d+)?)').firstMatch(source);
-    if (found == null)
+    if (found == null) {
       throw const ApiFailure('Не удалось прочитать цену сайта.');
+    }
     return found.group(1)!.replaceAll(',', '.');
   }
 
@@ -77,8 +78,9 @@ class ExistingSiteApi {
       final status = response.statusCode ?? 0;
       if ([301, 302, 303, 307, 308].contains(status)) {
         final target = response.headers.value('location');
-        if (target == null)
+        if (target == null) {
           throw const ApiFailure('Сервер не передал адрес перехода.');
+        }
         final next = uri.resolve(target);
         if (authenticated && ['/login', '/register'].contains(next.path)) {
           await api.clear();
@@ -308,8 +310,9 @@ class ExistingSiteApi {
     api.tjsRate = rateText;
     void sameAccount() {
       api.requireAccount(id);
-      if (epoch != api._sessionEpoch)
+      if (epoch != api._sessionEpoch) {
         throw const ApiFailure('Аккаунт изменился.', 401);
+      }
     }
 
     final storedKey = await api.storage.read(key: 'donatix_rest_key_$id');
@@ -484,8 +487,9 @@ class ExistingSiteApi {
     if (path == '/api/v1/mobile/cart/quote') return cartQuote(body);
     if (path == '/api/v1/mobile/cart') return cart(body, idempotency);
     if (isGet && path == '/api/v1/orders') return orders(query ?? {});
-    if (isGet && path == '/api/v1/transactions')
+    if (isGet && path == '/api/v1/transactions') {
       return transactions(query ?? {});
+    }
     if (path == '/api/v1/orders' && !isGet) {
       await guard();
       final expected = body['expected_total_usd']?.toString();
@@ -576,8 +580,9 @@ class ExistingSiteApi {
     }
     if (path == '/api/v1/mobile/admin/pricelist') return pricelist();
     if (path.startsWith('/api/v1/mobile/push/')) {
-      if (path.endsWith('/unregister'))
+      if (path.endsWith('/unregister')) {
         return {'ok': true, 'configured': false};
+      }
       throw const ApiFailure(
         'Мгновенные push требуют серверной поддержки.',
         501,
@@ -630,8 +635,9 @@ class ExistingSiteApi {
   }) {
     ({BigInt n, BigInt d}) fraction(String s) {
       final m = RegExp(r'^(\d+)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$').firstMatch(s);
-      if (m == null)
+      if (m == null) {
         throw const ApiFailure('Сервер передал некорректную стоимость.');
+      }
       final decimals = m.group(2) ?? '';
       final exponent = int.tryParse(m.group(3) ?? '0') ?? 0;
       if (exponent.abs() > 30 || decimals.length > 30) {
@@ -650,8 +656,9 @@ class ExistingSiteApi {
     final p = fraction(price), q = fraction(quantity), div = fraction(divisor);
     final numerator = p.n * q.n * div.d * BigInt.from(10000);
     final denominator = p.d * q.d * div.n;
-    if (denominator <= BigInt.zero)
+    if (denominator <= BigInt.zero) {
       throw const ApiFailure('Некорректный курс.');
+    }
     final micro = (numerator + denominator - BigInt.one) ~/ denominator;
     return (micro ~/ BigInt.from(10000)).toString() +
         '.' +
@@ -697,8 +704,9 @@ class ExistingSiteApi {
     if (p['kind'] == 'steam_topup') {
       amount = (fields['amount'] ?? '').toString().replaceAll(',', '.');
       divisor = (p['rates']?[fields['currency']] ?? '').toString();
-      if (divisor.isEmpty)
+      if (divisor.isEmpty) {
         throw const ApiFailure('Выберите валюту Steam.', 422);
+      }
     } else if (p['kind'] == 'steam_gift') {
       final game = await json(
         'GET',
@@ -707,16 +715,18 @@ class ExistingSiteApi {
       );
       String? resolved;
       for (final edition in game['offers'] as List? ?? []) {
-        if (edition['sub_id'].toString() != fields['sub_id'].toString())
+        if (edition['sub_id'].toString() != fields['sub_id'].toString()) {
           continue;
+        }
         for (final region in edition['regions'] as List? ?? []) {
           if (region['region'].toString() == fields['region'].toString()) {
             resolved = region['price_usd'].toString();
           }
         }
       }
-      if (resolved == null)
+      if (resolved == null) {
         throw const ApiFailure('Предложение Steam недоступно.', 422);
+      }
       price = resolved;
     }
     final balance = await json('GET', '/api/v1/balance');
@@ -764,8 +774,9 @@ class ExistingSiteApi {
         'fields': body['fields'],
       });
       final count = integer(item['count'].toString());
-      if (count < 1)
+      if (count < 1) {
         throw const ApiFailure('Проверьте количество пакетов.', 422);
+      }
       result.add({
         'product_id': item['product_id'],
         'count': count,
@@ -796,8 +807,9 @@ class ExistingSiteApi {
       0,
       (sum, i) => sum + integer(i['count'].toString()),
     );
-    if (requested < 1 || requested > 20)
+    if (requested < 1 || requested > 20) {
       throw const ApiFailure('Проверьте корзину.', 422);
+    }
     await guard();
     final made = <Map<String, dynamic>>[];
     var index = 0;
@@ -1089,8 +1101,9 @@ class ExistingSiteApi {
     final price = RegExp(
       r'(?:const|var)\s+(?:unit|perUsd)\s*=\s*parseFloat\("([^"]+)"\)',
     ).firstMatch(source)?.group(1);
-    if (price == null)
+    if (price == null) {
       throw const ApiFailure('Не удалось получить точную цену товара.');
+    }
     final quantity = form.querySelector('[name="quantity"]');
     final kindLink = doc
         .querySelector('a.back[href*="kind="]')
@@ -1108,8 +1121,9 @@ class ExistingSiteApi {
     final rateMatch = RegExp(
       r'const rates\s*=\s*(\{[^;]+\});',
     ).firstMatch(source);
-    if (rateMatch != null)
+    if (rateMatch != null) {
       rates = Map<String, dynamic>.from(jsonDecode(rateMatch.group(1)!) as Map);
+    }
     return {
       'product_id': id,
       'kind': kind,
@@ -1145,8 +1159,9 @@ class ExistingSiteApi {
 
   static String value(dom.Document doc, String label) {
     for (final row in doc.querySelectorAll('.kv')) {
-      if (text(row.querySelector('.k')) == label)
+      if (text(row.querySelector('.k')) == label) {
         return text(row.querySelector('.v'));
+      }
     }
     return '';
   }
@@ -1395,15 +1410,17 @@ class ExistingSiteApi {
     final match = RegExp(
       r'^(.*):\s*(\d+)\s*·\s*выполнено\s+(\d+)\s+на',
     ).firstMatch(heading);
-    if (match == null)
+    if (match == null) {
       throw const ApiFailure('Не удалось прочитать историю заказов.');
+    }
     final failed = RegExp(r'возвращено\s+(\d+)').firstMatch(heading);
     final items = <Map<String, dynamic>>[];
     for (final row in doc.querySelectorAll('#main .order-card')) {
       final status = row.querySelector('.status');
       final state = status?.classes.where((c) => c != 'status').firstOrNull;
-      if (state == null)
+      if (state == null) {
         throw const ApiFailure('Сайт не передал статус заказа.');
+      }
       items.add({
         'order_id': text(row.querySelector('.title')),
         'product_name': text(row.querySelector('.oc-line')),
@@ -1436,8 +1453,9 @@ class ExistingSiteApi {
     final items = <Map<String, dynamic>>[];
     for (final row in doc.querySelectorAll('#main .list .item')) {
       final balances = row.querySelectorAll('.tx-bal b');
-      if (balances.length != 2)
+      if (balances.length != 2) {
         throw const ApiFailure('Не удалось прочитать баланс операции.');
+      }
       final amount = row.querySelector('.amount');
       final date = row.querySelectorAll('.meta .pill').lastOrNull;
       final order = row.querySelector('.sub a')?.attributes['href'];
@@ -1801,8 +1819,9 @@ class ExistingSiteApi {
   Future<Map<String, dynamic>> pricelist() async {
     final doc = await page('/admin/pricelist');
     final data = doc.querySelector('#pl-data')?.text;
-    if (data == null)
+    if (data == null) {
       throw const ApiFailure('В каталоге пока нет пакетов для прайс-листа.');
+    }
     final parsed = Map<String, dynamic>.from(jsonDecode(data) as Map);
     return {
       'ok': true,
