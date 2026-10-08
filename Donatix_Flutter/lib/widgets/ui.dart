@@ -184,8 +184,15 @@ class StateView extends StatelessWidget {
 
 class AsyncPage extends StatefulWidget {
   final Future<Map<String, dynamic>> Function() load;
-  final Widget Function(BuildContext, Map<String, dynamic>) builder;
-  const AsyncPage({super.key, required this.load, required this.builder});
+  final Widget Function(BuildContext, Map<String, dynamic>)? builder;
+  final List<Widget> Function(BuildContext, Map<String, dynamic>)?
+  sliverBuilder;
+  const AsyncPage({
+    super.key,
+    required this.load,
+    this.builder,
+    this.sliverBuilder,
+  }) : assert(builder != null || sliverBuilder != null);
   @override
   State<AsyncPage> createState() => _AsyncPageState();
 }
@@ -220,14 +227,32 @@ class _AsyncPageState extends State<AsyncPage> {
       ? StateView(error: error, retry: reload)
       : RefreshIndicator(
           onRefresh: reload,
-          child: ListView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(18),
-            children: [
-              if (error != null) Surface(child: Text('$error')),
-              widget.builder(context, data!),
-            ],
-          ),
+          child: widget.sliverBuilder != null
+              ? CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverPadding(
+                      padding: const EdgeInsets.all(18),
+                      sliver: SliverMainAxisGroup(
+                        slivers: [
+                          if (error != null)
+                            SliverToBoxAdapter(
+                              child: Surface(child: Text('$error')),
+                            ),
+                          ...widget.sliverBuilder!(context, data!),
+                        ],
+                      ),
+                    ),
+                  ],
+                )
+              : ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(18),
+                  children: [
+                    if (error != null) Surface(child: Text('$error')),
+                    widget.builder!(context, data!),
+                  ],
+                ),
         );
 }
 

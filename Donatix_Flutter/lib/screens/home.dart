@@ -59,6 +59,24 @@ class HomeScreen extends StatelessWidget {
 
       final active = me['status'] == 'active';
       final tier = text(me['tier']);
+      const popularStyle = TextStyle(
+        fontSize: 12.5,
+        fontWeight: FontWeight.w600,
+        height: 1.2,
+      );
+      var popularHeight = 132.0;
+      for (final item in (me['popular'] as List).take(8)) {
+        final label = TextPainter(
+          text: TextSpan(
+            text: text(item['title']),
+            style: DefaultTextStyle.of(context).style.merge(popularStyle),
+          ),
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout(maxWidth: 130);
+        popularHeight = math.max(popularHeight, label.height + 86);
+        label.dispose();
+      }
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -78,8 +96,9 @@ class HomeScreen extends StatelessWidget {
               style: const TextStyle(fontSize: 18.4),
             ),
           ),
-          if (me['low_balance'] == true || Decimal.parse(text(me['balance'])) <
-              Decimal.parse(text(me['low_usd'] ?? '0')))
+          if (me['low_balance'] == true ||
+              Decimal.parse(text(me['balance'])) <
+                  Decimal.parse(text(me['low_usd'] ?? '0')))
             Surface(
               child: Row(
                 children: [
@@ -164,7 +183,7 @@ class HomeScreen extends StatelessWidget {
               ),
             ),
             SizedBox(
-              height: 132,
+              height: popularHeight,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: math.min(8, (me['popular'] as List).length),
@@ -172,14 +191,18 @@ class HomeScreen extends StatelessWidget {
                 itemBuilder: (c, i) {
                   final item = me['popular'][i] as Map;
                   return SizedBox(
-                    width: 92,
+                    width: 148,
                     child: SitePress(
-                      onTap: () =>
-                          openDonatixLink(context, api, text(item['href'])),
+                      onTap: () => openDonatixLink(
+                        context,
+                        api,
+                        text(item['href']),
+                        title: text(item['title']),
+                      ),
                       child: Container(
                         margin: const EdgeInsets.only(bottom: 6),
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
+                          horizontal: 8,
                           vertical: 12,
                         ),
                         decoration: BoxDecoration(
@@ -197,13 +220,7 @@ class HomeScreen extends StatelessWidget {
                             Text(
                               text(item['title']),
                               textAlign: TextAlign.center,
-                              maxLines: 3,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w600,
-                                height: 1.2,
-                              ),
+                              style: popularStyle,
                             ),
                           ],
                         ),

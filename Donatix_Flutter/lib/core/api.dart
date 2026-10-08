@@ -3,11 +3,13 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:decimal/decimal.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:html/parser.dart' as html;
 import 'package:html/dom.dart' as dom;
+import 'catalog_names.dart';
 
 part 'existing_site.dart';
 
@@ -33,8 +35,9 @@ class DonatixApi {
   bool androidPushEnabled = false;
   String? personalApiKey;
   bool personalKeyVerified = false;
-  String? get personalKeyIdentity => personalApiKey == null ? null :
-      sha256.convert(utf8.encode(personalApiKey!)).toString();
+  String? get personalKeyIdentity => personalApiKey == null
+      ? null
+      : sha256.convert(utf8.encode(personalApiKey!)).toString();
   int _sessionEpoch = 0;
   Future<void> _cookieWrites = Future.value();
   Future<void> _persistCookie(String? value, int epoch) {
@@ -49,6 +52,7 @@ class DonatixApi {
     _cookieWrites = next;
     return next;
   }
+
   late final ExistingSiteApi existingSite = ExistingSiteApi(this);
   String? session;
   String csrf = '';
@@ -119,18 +123,26 @@ class DonatixApi {
       InterceptorsWrapper(
         onRequest: (o, h) {
           if (o.uri.origin != Uri.parse(origin).origin) {
-            h.reject(DioException(
-              requestOptions: o,
-              error: const ApiFailure('Адрес запроса не принадлежит Donatix.'),
-            ));
+            h.reject(
+              DioException(
+                requestOptions: o,
+                error: const ApiFailure(
+                  'Адрес запроса не принадлежит Donatix.',
+                ),
+              ),
+            );
             return;
           }
           o.extra['donatix_session_epoch'] = _sessionEpoch;
           if (session != null) {
-            o.headers.putIfAbsent('Cookie', () =>
-                'dx_session=$session; dx_cur=$displayCurrency');
+            o.headers.putIfAbsent(
+              'Cookie',
+              () => 'dx_session=$session; dx_cur=$displayCurrency',
+            );
           }
-          if (usesExistingApi && userId > 0 && personalApiKey != null &&
+          if (usesExistingApi &&
+              userId > 0 &&
+              personalApiKey != null &&
               o.uri.path.startsWith('/api/')) {
             o.headers.putIfAbsent('X-API-Key', () => personalApiKey);
           }
@@ -138,7 +150,8 @@ class DonatixApi {
           h.next(o);
         },
         onResponse: (r, h) async {
-          if (r.requestOptions.extra['donatix_session_epoch'] != _sessionEpoch ||
+          if (r.requestOptions.extra['donatix_session_epoch'] !=
+                  _sessionEpoch ||
               r.requestOptions.extra['donatix_ignore_cookie'] == true) {
             h.next(r);
             return;
@@ -250,14 +263,20 @@ class DonatixApi {
     try {
       if (usesExistingApi) {
         final translated = await existingSite.request(
-          method, path, data: data, query: query, idempotency: idempotency,
+          method,
+          path,
+          data: data,
+          query: query,
+          idempotency: idempotency,
         );
         if (translated != null) return translated;
       }
       if (!usesExistingApi && userId == 0 && path == '/api/v1/accounts/check') {
         path = '/api/v1/mobile/public/accounts/check';
       }
-      if (!usesExistingApi && userId == 0 && path.startsWith('/api/v1/mobile/gamekeys/')) {
+      if (!usesExistingApi &&
+          userId == 0 &&
+          path.startsWith('/api/v1/mobile/gamekeys/')) {
         path = path.replaceFirst('/api/v1/mobile/', '/api/v1/mobile/public/');
       }
       if (!usesExistingApi && method == 'GET' && userId == 0) {
@@ -278,7 +297,10 @@ class DonatixApi {
         ),
       );
       if (epoch != _sessionEpoch || owner != userId) {
-        throw const ApiFailure('Аккаунт изменился. Проверьте историю перед повтором.', 401);
+        throw const ApiFailure(
+          'Аккаунт изменился. Проверьте историю перед повтором.',
+          401,
+        );
       }
       dynamic d = r.data;
       if (d is String) {
@@ -293,7 +315,8 @@ class DonatixApi {
         onSessionExpired?.call();
       }
       if (d is! Map || r.statusCode! >= 300 || d['ok'] == false) {
-        if (r.statusCode == 404 && path == '/api/v1/mobile/config' &&
+        if (r.statusCode == 404 &&
+            path == '/api/v1/mobile/config' &&
             (d is! Map || '${d['error'] ?? ''}'.toLowerCase() == 'not found')) {
           return existingSite.configuration();
         }

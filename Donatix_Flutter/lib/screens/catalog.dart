@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../core/api.dart';
+import '../core/catalog_names.dart';
 import '../widgets/ui.dart';
 import '../core/navigation.dart';
 import 'cart.dart';
@@ -102,80 +103,103 @@ class _CatalogScreenState extends State<CatalogScreen> {
             'kind': kind,
             'q': query,
           }),
-          builder: (context, d) => Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Heading(
-                kinds[kind] ?? 'Каталог',
-                subtitle: 'Выберите игру и пакет пополнения',
+          sliverBuilder: (context, d) {
+            final items = d['items'] as List;
+            return [
+              SliverToBoxAdapter(
+                child: Heading(
+                  kinds[kind] ?? 'Каталог',
+                  subtitle: 'Выберите игру или сервис',
+                ),
               ),
-              if ((d['items'] as List).isEmpty)
-                const Surface(child: Text('Ничего не найдено.')),
-              LayoutBuilder(
+              if (items.isEmpty)
+                const SliverToBoxAdapter(
+                  child: Surface(child: Text('Ничего не найдено.')),
+                ),
+              SliverLayoutBuilder(
                 builder: (context, box) {
-                  final columns = box.maxWidth > 650 ? 3 : 2;
-                  return Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: (d['items'] as List)
-                        .map(
-                          (p) => SizedBox(
-                            width:
-                                (box.maxWidth - 12 * (columns - 1)) / columns,
-                            child: Surface(
-                              padding: EdgeInsets.zero,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () => Navigator.push(
-                                  context,
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => PacksScreen(
-                                      api: widget.api,
-                                      category: text(p['category_id']),
-                                      kind: text(p['kind']),
-                                      title: text(p['category_name']),
-                                    ),
-                                  ),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      ProductImage(p['image_url'], size: 76),
-                                      const SizedBox(height: 12),
-                                      Text(
-                                        text(p['category_name']),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Text(
-                                        'от ${widget.api.displayPrice(p['from_price'])}',
-                                        style: Theme.of(
-                                          context,
-                                        ).textTheme.bodySmall,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
+                  final columns = box.crossAxisExtent > 650 ? 3 : 2;
+                  return SliverList.builder(
+                    itemCount: (items.length / columns).ceil(),
+                    itemBuilder: (context, row) => Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          for (var column = 0; column < columns; column++) ...[
+                            if (column > 0) const SizedBox(width: 12),
+                            Expanded(
+                              child: row * columns + column < items.length
+                                  ? categoryCard(
+                                      context,
+                                      items[row * columns + column] as Map,
+                                    )
+                                  : const SizedBox.shrink(),
                             ),
-                          ),
-                        )
-                        .toList(),
+                          ],
+                        ],
+                      ),
+                    ),
                   );
                 },
               ),
-            ],
-          ),
+            ];
+          },
         ),
       ),
     ],
+  );
+
+  Widget categoryCard(BuildContext context, Map p) => Surface(
+    padding: EdgeInsets.zero,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => switch (text(p['kind'])) {
+            'telegram_stars' || 'telegram_premium' => TelegramScreen(
+              api: widget.api,
+              premium: text(p['kind']) == 'telegram_premium',
+            ),
+            'steam_topup' => SteamScreen(api: widget.api),
+            'steam_gift' => SteamGiftScreen(api: widget.api),
+            _ => PacksScreen(
+              api: widget.api,
+              category: text(p['category_id']),
+              kind: text(p['kind']),
+              title: catalogDisplayName(text(p['category_name'])),
+            ),
+          },
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ProductImage(p['image_url'], size: 76),
+            const SizedBox(height: 12),
+            Text(
+              catalogDisplayName(text(p['category_name'])),
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 6),
+            if (text(p['region_label']).isNotEmpty)
+              Text(
+                text(p['region_label']),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            Text(
+              p['from_price'] == null
+                  ? text(p['price_note'])
+                  : 'от ${widget.api.displayPrice(p['from_price'])}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }
 
@@ -206,7 +230,7 @@ class _PacksScreenState extends State<PacksScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(widget.title)),
+    appBar: AppBar(title: Text(catalogDisplayName(widget.title))),
     body: AsyncPage(
       load: () async {
         final all = <dynamic>[];
@@ -229,6 +253,13 @@ class _PacksScreenState extends State<PacksScreen> {
             .map((p) => text(p['region']))
             .where((s) => s.isNotEmpty)
             .toSet();
+        final regionTitles = <String, String>{
+          for (final p in products)
+            if (text(p['region']).isNotEmpty)
+              text(p['region']): text(p['region_title']).isEmpty
+                  ? text(p['region'])
+                  : text(p['region_title']),
+        };
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -250,14 +281,19 @@ class _PacksScreenState extends State<PacksScreen> {
                   ),
                 ),
               ),
-            Heading(widget.title, subtitle: '${products.length} пакетов'),
+            Heading(
+              catalogDisplayName(widget.title),
+              subtitle: '${products.length} пакетов',
+            ),
             if (regions.length > 1)
               Wrap(
                 spacing: 8,
                 children: [
                   for (final r in ['', ...regions])
                     ChoiceChip(
-                      label: Text(r.isEmpty ? 'Все регионы' : r),
+                      label: Text(
+                        r.isEmpty ? 'Все регионы' : regionTitles[r] ?? r,
+                      ),
                       selected: (region ?? '') == r,
                       onSelected: (_) => setState(() {
                         region = r;

@@ -24,8 +24,9 @@ Widget purchasePage(DonatixApi api, String productId) => switch (productId) {
 Future<void> openDonatixLink(
   BuildContext context,
   DonatixApi api,
-  String value,
-) async {
+  String value, {
+  String? title,
+}) async {
   final root = Uri.parse(DonatixApi.origin),
       uri = Uri.parse(DonatixApi.origin).resolve(value);
   if (uri.scheme != root.scheme ||
@@ -66,7 +67,7 @@ Future<void> openDonatixLink(
         api: api,
         category: query['category']!,
         kind: query['kind'] ?? '',
-        title: 'Каталог',
+        title: title ?? 'Каталог',
         region: query['region'],
       );
     } else {

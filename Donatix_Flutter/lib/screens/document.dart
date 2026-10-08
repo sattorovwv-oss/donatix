@@ -412,13 +412,34 @@ class NativeForm extends StatefulWidget {
 }
 
 class _NativeFormState extends State<NativeForm> {
-  final formKey = GlobalKey<FormState>();
+  var formKey = GlobalKey<FormState>();
   final controllers = <dom.Element, TextEditingController>{};
   final values = <dom.Element, String>{}, files = <dom.Element, String>{};
   bool busy = false;
+  int formRevision = 0;
   @override
   void initState() {
     super.initState();
+    readForm();
+  }
+
+  @override
+  void didUpdateWidget(covariant NativeForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.form, widget.form)) {
+      for (final c in controllers.values) {
+        c.dispose();
+      }
+      controllers.clear();
+      values.clear();
+      files.clear();
+      formKey = GlobalKey<FormState>();
+      formRevision++;
+      readForm();
+    }
+  }
+
+  void readForm() {
     for (final e in widget.form.querySelectorAll('input,textarea,select')) {
       if (e.localName == 'select') {
         final option =
@@ -469,6 +490,7 @@ class _NativeFormState extends State<NativeForm> {
 
   Future<void> submit(dom.Element button) async {
     if (busy || !(formKey.currentState?.validate() ?? false)) return;
+    final revision = formRevision;
     final method = (widget.form.attributes['method'] ?? 'get').toUpperCase();
     setState(() => busy = true);
     try {
@@ -481,6 +503,12 @@ class _NativeFormState extends State<NativeForm> {
             'Действие будет выполнено на сервере Donatix.',
           )) {
         return;
+      }
+      if (!mounted) return;
+      if (revision != formRevision) {
+        throw const ApiFailure(
+          'Форма обновилась. Проверьте значения и сохраните снова.',
+        );
       }
       final entries = <MapEntry<String, String>>[];
       final fileEntries = <MapEntry<String, MultipartFile>>[];
@@ -500,12 +528,7 @@ class _NativeFormState extends State<NativeForm> {
           continue;
         }
         entries.add(
-          MapEntry(
-            name,
-            name == 'csrf'
-                ? widget.api.csrf
-                : controllers[e]?.text ?? values[e] ?? '',
-          ),
+          MapEntry(name, name == 'csrf' ? widget.api.csrf : fieldValue(e)),
         );
       }
       if (button.attributes['name'] != null) {
@@ -558,6 +581,39 @@ class _NativeFormState extends State<NativeForm> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  bool isMarkup(dom.Element e) {
+    final path = Uri.parse(widget.sourcePath).path;
+    final name = e.attributes['name'] ?? '';
+    return (path == '/admin/settings' && name.startsWith('markup_')) ||
+        (path.startsWith('/admin/users/') && name == 'markup_override');
+  }
+
+  String fieldValue(dom.Element e) {
+    final value = controllers[e]?.text ?? values[e] ?? '';
+    if (!isMarkup(e)) return value;
+    final normalized = value.trim().replaceAll(',', '.');
+    return e.attributes['name'] == 'markup_override'
+        ? normalized
+        : normalized.replaceAll('%', '').trim();
+  }
+
+  String? validateField(dom.Element e, String? value) {
+    if (e.attributes.containsKey('required') && (value ?? '').trim().isEmpty) {
+      return 'Заполните поле';
+    }
+    if (!isMarkup(e) || (value ?? '').trim().isEmpty) return null;
+    final raw = (value ?? '').trim().replaceAll(',', '.');
+    final personal = e.attributes['name'] == 'markup_override';
+    final number = double.tryParse(
+      personal ? raw : raw.replaceAll('%', '').trim(),
+    );
+    if (number == null || !number.isFinite) return 'Введите число в процентах';
+    if (number < (personal ? -50 : 0) || number > (personal ? 500 : 100)) {
+      return personal ? 'Допустимо от −50 до 500 %' : 'Допустимо от 0 до 100 %';
+    }
+    return null;
   }
 
   Widget node(dom.Node n) {
@@ -651,6 +707,7 @@ class _NativeFormState extends State<NativeForm> {
       return Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: TextFormField(
+          key: ValueKey(n.attributes['name'] ?? n.id),
           controller: controllers[n],
           enabled: !disabled,
           obscureText: type == 'password',
@@ -666,7 +723,8 @@ class _NativeFormState extends State<NativeForm> {
               ? 8
               : 1,
           keyboardType:
-              ['number', 'range'].contains(type) ||
+              isMarkup(n) ||
+                  ['number', 'range'].contains(type) ||
                   ['numeric', 'decimal'].contains(n.attributes['inputmode'])
               ? const TextInputType.numberWithOptions(
                   decimal: true,
@@ -680,12 +738,14 @@ class _NativeFormState extends State<NativeForm> {
           decoration: InputDecoration(
             labelText: label(n),
             hintText: n.attributes['placeholder'],
+            suffixText: isMarkup(n) ? '%' : null,
+            helperText: isMarkup(n) && !n.attributes.containsKey('required')
+                ? 'Пусто — использовать наценку уровня'
+                : null,
+            helperMaxLines: 2,
           ),
           maxLength: int.tryParse(n.attributes['maxlength'] ?? ''),
-          validator: (v) =>
-              n.attributes.containsKey('required') && (v ?? '').trim().isEmpty
-              ? 'Заполните поле'
-              : null,
+          validator: (v) => validateField(n, v),
         ),
       );
     }
