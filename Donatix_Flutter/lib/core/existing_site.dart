@@ -589,6 +589,22 @@ class ExistingSiteApi {
       );
     }
     if (path.startsWith('/api/v1/mobile/account/')) {
+      if (api.androidExtension && path == '/api/v1/mobile/account/deletion') {
+        try {
+          return await json(
+            method,
+            '/api/v1/android/account/deletion',
+            data: data,
+            query: query,
+          );
+        } on ApiFailure catch (e) {
+          if (e.status != 404) rethrow;
+          throw const ApiFailure(
+            'Для удаления аккаунта нужно обновить мобильное дополнение на сервере.',
+            501,
+          );
+        }
+      }
       throw const ApiFailure(
         'На сервере пока нет удаления аккаунта. Обратитесь в поддержку.',
         501,
@@ -1392,30 +1408,43 @@ class ExistingSiteApi {
   }
 
   Future<Map<String, dynamic>> orders(Map<String, dynamic> query) async {
-    final doc = await page(
-      '/panel/orders',
-      query: {
-        for (final key in [
-          'page',
-          'status',
-          'q',
-          'period',
-          'date_from',
-          'date_to',
-        ])
-          if (query[key] != null) key: query[key],
-      },
-    );
+    final filters = {
+      for (final key in [
+        'page',
+        'status',
+        'q',
+        'period',
+        'date_from',
+        'date_to',
+      ])
+        if (query[key] != null) key: query[key],
+    };
+    if (api.androidExtension) {
+      try {
+        return await json('GET', '/api/v1/android/orders', query: filters);
+      } on ApiFailure catch (e) {
+        // The previous addon remains usable until its isolated update is installed.
+        // Authentication and server failures must not be disguised as empty lists.
+        if (e.status != 404) rethrow;
+      }
+    }
+    final doc = await page('/panel/orders', query: filters);
     final heading = text(doc.querySelector('.page-hero p'));
     final match = RegExp(
-      r'^(.*):\s*(\d+)\s*·\s*выполнено\s+(\d+)\s+на',
+      r'^(.*):\s*([\d\s]+)\s*[·•]\s*выполнено\s+([\d\s]+)\s+на',
+      caseSensitive: false,
     ).firstMatch(heading);
-    if (match == null) {
+    final cards = doc.querySelectorAll('#main .order-card');
+    final empty = doc.querySelector('#main .list .empty');
+    if (match == null && cards.isEmpty && empty == null) {
       throw const ApiFailure('Не удалось прочитать историю заказов.');
     }
-    final failed = RegExp(r'возвращено\s+(\d+)').firstMatch(heading);
+    final failed = RegExp(
+      r'возвращено\s+(\d+)',
+      caseSensitive: false,
+    ).firstMatch(heading);
     final items = <Map<String, dynamic>>[];
-    for (final row in doc.querySelectorAll('#main .order-card')) {
+    for (final row in cards) {
       final status = row.querySelector('.status');
       final state = status?.classes.where((c) => c != 'status').firstOrNull;
       if (state == null) {
@@ -1433,15 +1462,22 @@ class ExistingSiteApi {
     return {
       'ok': true,
       'items': items,
-      'total': int.parse(match.group(2)!),
+      'total': match == null ? null : integer(match.group(2)!),
       'page': query['page'] ?? 1,
       'limit': 30,
-      'period': match.group(1),
-      'totals': {
-        'done': int.parse(match.group(3)!),
-        'spent': usd(doc.querySelector('.page-hero p')),
-        'failed': failed == null ? 0 : int.parse(failed.group(1)!),
-      },
+      'period': match?.group(1),
+      'has_next': doc.querySelectorAll('.pager a[href]').any((link) {
+        final target = Uri.tryParse(link.attributes['href'] ?? '');
+        final targetPage = int.tryParse(target?.queryParameters['page'] ?? '');
+        return targetPage != null && targetPage > (query['page'] as int? ?? 1);
+      }),
+      'totals': match == null
+          ? null
+          : {
+              'done': integer(match.group(3)!),
+              'spent': usd(doc.querySelector('.page-hero p')),
+              'failed': failed == null ? 0 : int.parse(failed.group(1)!),
+            },
     };
   }
 

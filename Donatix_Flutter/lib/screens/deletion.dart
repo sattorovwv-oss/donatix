@@ -15,6 +15,7 @@ class _DeletionScreenState extends State<DeletionScreen> {
   final confirmation = TextEditingController(),
       password = TextEditingController();
   Map<String, dynamic>? info;
+  int? loadedUserId;
   Object? error;
   bool busy = false;
   @override
@@ -31,11 +32,14 @@ class _DeletionScreenState extends State<DeletionScreen> {
   }
 
   Future<void> load() async {
+    final owner = widget.api.userId;
     try {
       final d = await widget.api.get('/api/v1/mobile/account/deletion');
+      widget.api.requireAccount(owner);
       if (mounted) {
         setState(() {
           info = d;
+          loadedUserId = owner;
           error = null;
         });
       }
@@ -46,6 +50,7 @@ class _DeletionScreenState extends State<DeletionScreen> {
 
   Future<void> submit() async {
     if (busy || confirmation.text != 'УДАЛИТЬ') return;
+    final deletingUserId = loadedUserId ?? 0;
     if (!await confirmAction(
       context,
       'Удалить аккаунт и данные?',
@@ -53,8 +58,10 @@ class _DeletionScreenState extends State<DeletionScreen> {
     )) {
       return;
     }
+    if (!mounted) return;
     setState(() => busy = true);
     try {
+      widget.api.requireAccount(deletingUserId);
       final d = await widget.api.post('/api/v1/mobile/account/deletion', {
         'confirmation': confirmation.text,
         'password': password.text,
@@ -78,19 +85,43 @@ class _DeletionScreenState extends State<DeletionScreen> {
           ],
         ),
       );
-      await widget.api.storage.deleteAll();
+      if (widget.api.userId != deletingUserId) return;
+      // Invalidate in-flight responses before deleting local credentials.
+      Object? cleanupError;
+      try {
+        await widget.api.clear();
+        await widget.api.storage.deleteAll();
+      } catch (e) {
+        cleanupError = e;
+      }
       PaintingBinding.instance.imageCache.clear();
       PaintingBinding.instance.imageCache.clearLiveImages();
       try {
         await const MethodChannel(
           'tj.donatix.app/native',
         ).invokeMethod<void>('clearPrivateFiles');
-      } on PlatformException {
-        /* Native cleanup errors do not resurrect an erased server account. */
+      } on PlatformException catch (e) {
+        cleanupError = e;
       } on MissingPluginException {
         /* Unsupported targets still clear the Flutter session. */
       }
-      await widget.api.clear();
+      if (cleanupError != null && mounted) {
+        await showDialog<void>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('Очистка устройства'),
+            content: const Text(
+              'Сервер принял удаление, но очистить все локальные файлы не удалось. Очистите данные Donatix в настройках Android.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c),
+                child: const Text('Понятно'),
+              ),
+            ],
+          ),
+        );
+      }
       widget.api.onSessionExpired?.call();
     } catch (e) {
       if (mounted) message(context, e);
@@ -113,6 +144,14 @@ class _DeletionScreenState extends State<DeletionScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(text(info!['erased'])),
+                    if (info!['retained'] != null) ...[
+                      const SizedBox(height: 12),
+                      Text(text(info!['retained'])),
+                    ],
+                    if (info!['processing'] != null) ...[
+                      const SizedBox(height: 12),
+                      Text(text(info!['processing'])),
+                    ],
                     const SizedBox(height: 12),
                     const Text(
                       'Действие необратимо. D-коины будут утрачены. Заказы и возврат остатка баланса должны завершиться перед удалением.',
@@ -138,7 +177,7 @@ class _DeletionScreenState extends State<DeletionScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Текущий пароль',
                         helperText:
-                            'Или подтвердите свежим входом через Google / Apple',
+                            'Или выйдите и войдите заново, затем подтвердите удаление в течение 5 минут',
                       ),
                     ),
                     const SizedBox(height: 14),

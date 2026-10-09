@@ -26,7 +26,16 @@ class MainActivity : FlutterActivity() {
                             call.argument<Boolean>("androidExtension") ?: false)
                         result.success(null)
                     }
-                    "clearPrivateFiles" -> { File(cacheDir, "shared").deleteRecursively(); result.success(null) }
+                    "clearPrivateFiles" -> {
+                        NotificationSession.stop(this)
+                        // Shared receipts, camera captures, picker copies and
+                        // temporary downloads all belong to this app's cache.
+                        val roots = listOfNotNull(cacheDir, externalCacheDir)
+                        val cleared = roots.flatMap { it.listFiles()?.toList() ?: emptyList() }
+                            .map { it.deleteRecursively() }.all { it }
+                        if (cleared) result.success(null)
+                        else result.error("cleanup_failed", "Не удалось очистить временные файлы", null)
+                    }
                     "pushStatus" -> { result.success(NativePush.status(this)) }
                     "stopNotifications" -> { NotificationSession.stop(this); result.success(null) }
                     "requestNotificationPermission" -> {

@@ -22,6 +22,8 @@ from donatix.deps import check_csrf, csrf_token, get_conn, session_user
 from .fcm import Sender
 from .push import Worker
 from .store import Store, site_readonly
+from .erasure import Erasure, mount as mount_erasure
+from .history import history
 
 PREFIX = "/api/v1/android"
 COOKIE = "dx_android_oauth"
@@ -110,6 +112,7 @@ def create_app(config=None, supplier=None, *, store_path=None, sender=None, star
             logging.getLogger("donatix.android").warning("Android FCM credentials are unavailable or invalid; site remains active")
             sender = Sender()
     worker = Worker(config, store, sender)
+    erasure = Erasure(config, store)
     original_lifespan = app.router.lifespan_context
 
     @asynccontextmanager
@@ -117,13 +120,16 @@ def create_app(config=None, supplier=None, *, store_path=None, sender=None, star
         async with original_lifespan(application):
             if start_push:
                 worker.start()
+                erasure.start()
             try:
                 yield
             finally:
+                erasure.stop()
                 worker.stop()
 
     app.router.lifespan_context = lifespan
     app.state.android_store, app.state.android_worker = store, worker
+    app.state.android_erasure = erasure
     app.add_middleware(HandoffMiddleware, secret=config.secret_key)
     router = APIRouter(prefix=PREFIX, tags=["Optional Android integration"])
 
@@ -157,7 +163,15 @@ def create_app(config=None, supplier=None, *, store_path=None, sender=None, star
     @router.get("/config")
     def configuration():
         return {"ok": True, "android_extension_version": 1, "google_enabled": google_auth.enabled(config),
-                "fcm_enabled": sender.configured}
+                "fcm_enabled": sender.configured, "order_history": True, "account_deletion": True,
+                "account_deletion_url": config.base_url.rstrip("/") + "/android/account-deletion"}
+
+    @router.get("/orders")
+    def order_history(request: Request, page: int = 1, status: str = "", q: str = "", period: str = "",
+                      date_from: str = "", date_to: str = "", current=Depends(user), conn=Depends(get_conn)):
+        _limit(request, "status", "android-history:" + str(current["id"]))
+        return history(request, conn, current, page=page, status=status, q=q, period=period,
+                       date_from=date_from, date_to=date_to)
 
     @router.get("/session")
     def session(request: Request, current=Depends(user)):
@@ -264,5 +278,6 @@ def create_app(config=None, supplier=None, *, store_path=None, sender=None, star
                       (body.device_id, current["id"], request.session["sid"]))
         return {"ok": True}
 
+    mount_erasure(app, router, erasure, user, header_csrf)
     app.include_router(router)
     return app

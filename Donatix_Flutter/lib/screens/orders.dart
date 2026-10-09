@@ -197,7 +197,10 @@ class _OrdersScreenState extends State<OrdersScreen> {
             ),
             Text('$page'),
             TextButton(
-              onPressed: page * (d['limit'] as int? ?? 20) < (d['total'] as int)
+              onPressed:
+                  (d['total'] == null
+                      ? d['has_next'] == true
+                      : page * (d['limit'] as int? ?? 20) < (d['total'] as int))
                   ? () => setState(() => page++)
                   : null,
               child: const Text('Далее'),

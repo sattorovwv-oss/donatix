@@ -1,0 +1,188 @@
+{
+  "format": 1,
+  "base_commit": "03b6280",
+  "payload": {
+    "donatix_android_extension/factory.py": "604c8dbe05ee85db97ad3d260a441faf56c5de06aba140af710b799cf27fb3d9",
+    "donatix_android_extension/history.py": "977c02e6f6ee1133adfaa1153cb70dc81f52f6d5dc052590214f8c8e770d624b",
+    "donatix_android_extension/erasure.py": "86bf3b824dc962415c69660f80502f24e906c294f18cf0c0f19a42e04b6773f6",
+    "update_orders_deletion.py": "610aca5d6ad289c276ae672c73e9e8b1a79e5afbd6485a1c395b7db992ff4a8b"
+  },
+  "factories": [
+    {
+      "before": "85b792a58e62d7f978a874be64f10a98baf3d19ba58369cec35a424cf40afff0",
+      "after": "604c8dbe05ee85db97ad3d260a441faf56c5de06aba140af710b799cf27fb3d9"
+    },
+    {
+      "before": "57ac4eca32d7ec52a3167c3cef2bb3853cbd1985b2282fe41890f91af6006a54",
+      "after": "bd9ec013a471216aa7e34e7f9f2a73e346b1bafcb92f0343f8f689554cea4c8a"
+    }
+  ],
+  "factory_edits": [
+    {
+      "before": "from .fcm import Sender\nfrom .push import Worker\nfrom .store import Store, site_readonly\n\nPREFIX = \"/api/v1/android\"\nCOOKIE = \"dx_android_oauth\"\n",
+      "after": "from .fcm import Sender\nfrom .push import Worker\nfrom .store import Store, site_readonly\nfrom .erasure import Erasure, mount as mount_erasure\nfrom .history import history\n\nPREFIX = \"/api/v1/android\"\nCOOKIE = \"dx_android_oauth\"\n"
+    },
+    {
+      "before": "            logging.getLogger(\"donatix.android\").warning(\"Android FCM credentials are unavailable or invalid; site remains active\")\n            sender = Sender()\n    worker = Worker(config, store, sender)\n    original_lifespan = app.router.lifespan_context\n\n    @asynccontextmanager\n",
+      "after": "            logging.getLogger(\"donatix.android\").warning(\"Android FCM credentials are unavailable or invalid; site remains active\")\n            sender = Sender()\n    worker = Worker(config, store, sender)\n    erasure = Erasure(config, store)\n    original_lifespan = app.router.lifespan_context\n\n    @asynccontextmanager\n"
+    },
+    {
+      "before": "        async with original_lifespan(application):\n            if start_push:\n                worker.start()\n            try:\n                yield\n            finally:\n                worker.stop()\n\n    app.router.lifespan_context = lifespan\n    app.state.android_store, app.state.android_worker = store, worker\n    app.add_middleware(HandoffMiddleware, secret=config.secret_key)\n    router = APIRouter(prefix=PREFIX, tags=[\"Optional Android integration\"])\n\n",
+      "after": "        async with original_lifespan(application):\n            if start_push:\n                worker.start()\n                erasure.start()\n            try:\n                yield\n            finally:\n                erasure.stop()\n                worker.stop()\n\n    app.router.lifespan_context = lifespan\n    app.state.android_store, app.state.android_worker = store, worker\n    app.state.android_erasure = erasure\n    app.add_middleware(HandoffMiddleware, secret=config.secret_key)\n    router = APIRouter(prefix=PREFIX, tags=[\"Optional Android integration\"])\n\n"
+    },
+    {
+      "before": "    @router.get(\"/config\")\n    def configuration():\n        return {\"ok\": True, \"android_extension_version\": 1, \"google_enabled\": google_auth.enabled(config),\n                \"fcm_enabled\": sender.configured}\n\n    @router.get(\"/session\")\n    def session(request: Request, current=Depends(user)):\n",
+      "after": "    @router.get(\"/config\")\n    def configuration():\n        return {\"ok\": True, \"android_extension_version\": 1, \"google_enabled\": google_auth.enabled(config),\n                \"fcm_enabled\": sender.configured, \"order_history\": True, \"account_deletion\": True,\n                \"account_deletion_url\": config.base_url.rstrip(\"/\") + \"/android/account-deletion\"}\n\n    @router.get(\"/orders\")\n    def order_history(request: Request, page: int = 1, status: str = \"\", q: str = \"\", period: str = \"\",\n                      date_from: str = \"\", date_to: str = \"\", current=Depends(user), conn=Depends(get_conn)):\n        _limit(request, \"status\", \"android-history:\" + str(current[\"id\"]))\n        return history(request, conn, current, page=page, status=status, q=q, period=period,\n                       date_from=date_from, date_to=date_to)\n\n    @router.get(\"/session\")\n    def session(request: Request, current=Depends(user)):\n"
+    },
+    {
+      "before": "                      (body.device_id, current[\"id\"], request.session[\"sid\"]))\n        return {\"ok\": True}\n\n    app.include_router(router)\n    return app\n",
+      "after": "                      (body.device_id, current[\"id\"], request.session[\"sid\"]))\n        return {\"ok\": True}\n\n    mount_erasure(app, router, erasure, user, header_csrf)\n    app.include_router(router)\n    return app\n"
+    }
+  ],
+  "unchanged_modules": {
+    "__init__.py": "8bb92a6f9eae9a992d03fdc590f4c7986a0d8ec1c7990d32b1b1877aa00bd235",
+    "__main__.py": "f820a8eedfb5a1b6c8a4c40c3846b5f2de555e60b5d62f6fc4c08f88048b3c9c",
+    "fcm.py": "916cde3241f24a06ecc3e9d687ed87ea7eef95e6d87dc666e4731afdd89f5b2f",
+    "push.py": "0753c2ad008f5aab28be35085087598846cd3a184bd6ec34d539171026f4a98a",
+    "store.py": "edfe1430fcac15804403dec0afe446a54daf9bc3b969ecb039a55ef40dbe5bce"
+  },
+  "site_code": {
+    "donatix/app.py": "76708a4dfe98246e43dc98f30c277c19010ebf3f6806ba57a09425a04293791b",
+    "donatix/accounts.py": "9fe6941e45dde8bd00ca87a5f4127f3217ce3c571eb2927f0d7a836c76cb02be",
+    "donatix/api.py": "b32cfe5d72f6590f28a60392a6d25761875ab02fb70af800f8e4e1e5229f3b72",
+    "donatix/bots.py": "36e4b77dadc257571a9ff062fd9ee960b196ac8a1486fb3f44dfec08bdc8db62",
+    "donatix/catalog.py": "2d1d297faeabe9ed26857dd5c15001fd6ce3326af2f5c3b9c5bfc7a13ffa59c4",
+    "donatix/config.py": "48003d654cf6eb70309bc6284c411747415e7e0980c8c3edee6ca52e7e4b3c41",
+    "donatix/db.py": "750e86b7856363471aff6a9db8e094e06fc8931f3c9a4f59b001e09158f4b948",
+    "donatix/dcoin.py": "893b3bacf897c9b55e456e76e194d70522b155fd3c63c60ef04712336a4401df",
+    "donatix/deps.py": "113573593fa4a8299dd9cc252572eb45f670a65680a74b2e7abfba115a918233",
+    "donatix/money.py": "c4031e14bbd5d51cb9c45bafd71dec5662a29951ac756ec33e7d79a3f9ffb039",
+    "donatix/orders.py": "fa58010314563b40f4bb03eec343c7aefb37ce5bd32afbeacd1ee2c932fcbcf2",
+    "donatix/periods.py": "df064b3304bf024763c3bb183358c568ac22a7bdeb5769bf091c57878f70cf07",
+    "donatix/security.py": "7655d66117198cd14e253862b5b1e29989d2dab0a5a286d44d4ea9a7a6f92758",
+    "donatix/timez.py": "64b19d2b8664547df1aea6c6e239bfaf4171f3fdb40dcc8f435001b636b50d0c",
+    "donatix/web.py": "db99b5951c7c480669be41e55c4bbc3b3d6d083883c9c64ae7e51fc2985e74bc",
+    "donatix/referrals.py": "695b66adae97a9c83457206b35c3403a85bed1b3de9f59b2853d553755cbf062"
+  },
+  "schema": {
+    "users": [
+      "id",
+      "email",
+      "login",
+      "password_hash",
+      "role",
+      "status",
+      "balance_micro",
+      "dcoin",
+      "created_at",
+      "google_sub",
+      "phone"
+    ],
+    "orders": [
+      "id",
+      "user_id",
+      "fields_json",
+      "delivery_json",
+      "status",
+      "supplier_idem_key"
+    ],
+    "payments": [
+      "id",
+      "user_id",
+      "status",
+      "receipt_file",
+      "receipt_hash",
+      "receipt_txn",
+      "receipt_fp"
+    ],
+    "bank_notices": [
+      "payment_id",
+      "sender",
+      "card_tail",
+      "comment",
+      "body",
+      "note"
+    ],
+    "logins": [
+      "user_id",
+      "sid",
+      "ended_at",
+      "created_at"
+    ],
+    "api_keys": [
+      "user_id",
+      "revoked_at",
+      "key_enc"
+    ],
+    "bots": [
+      "id",
+      "user_id",
+      "token_enc",
+      "enabled"
+    ],
+    "notifications": [
+      "user_id",
+      "text"
+    ],
+    "push_subs": [
+      "user_id"
+    ],
+    "support_links": [
+      "tg_id",
+      "user_id"
+    ],
+    "support_codes": [
+      "tg_id",
+      "user_id"
+    ],
+    "support_link_codes": [
+      "user_id"
+    ],
+    "support_history": [
+      "tg_id"
+    ],
+    "support_memory": [
+      "tg_id"
+    ],
+    "support_tickets": [
+      "tg_id",
+      "user_id"
+    ],
+    "shop_users": [
+      "tg_id",
+      "user_id"
+    ],
+    "shop_watch": [
+      "chat_id"
+    ],
+    "player_names": [
+      "uid"
+    ],
+    "payment_msgs": [
+      "payment_id"
+    ],
+    "tg_logins": [
+      "user_id",
+      "link_user_id"
+    ],
+    "dcoin_ledger": [
+      "user_id"
+    ],
+    "transactions": [
+      "user_id",
+      "note"
+    ],
+    "visits": [
+      "user_id"
+    ],
+    "settings": [
+      "key"
+    ],
+    "referral_rewards": [
+      "order_id",
+      "referrer_id",
+      "referred_id",
+      "amount_micro"
+    ]
+  }
+}

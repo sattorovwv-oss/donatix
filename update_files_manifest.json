@@ -1,0 +1,76 @@
+{
+  "format": 1,
+  "base_commit": "03b6280",
+  "files": [
+    {
+      "path": "Android_Server_Addon/donatix_android_extension/erasure.py",
+      "before": null,
+      "after": "86bf3b824dc962415c69660f80502f24e906c294f18cf0c0f19a42e04b6773f6"
+    },
+    {
+      "path": "Android_Server_Addon/donatix_android_extension/factory.py",
+      "before": "85b792a58e62d7f978a874be64f10a98baf3d19ba58369cec35a424cf40afff0",
+      "after": "604c8dbe05ee85db97ad3d260a441faf56c5de06aba140af710b799cf27fb3d9"
+    },
+    {
+      "path": "Android_Server_Addon/donatix_android_extension/history.py",
+      "before": null,
+      "after": "977c02e6f6ee1133adfaa1153cb70dc81f52f6d5dc052590214f8c8e770d624b"
+    },
+    {
+      "path": "Android_Server_Addon/orders_deletion_manifest.json",
+      "before": null,
+      "after": "504a247ea6a36a10daea3faba33da5e333ab6eda838db3c39ed2ebfba5c5ff90"
+    },
+    {
+      "path": "Android_Server_Addon/tests/test_history_erasure.py",
+      "before": null,
+      "after": "7b4183f4e7c703617dd0df262bfc722dd069f8e600a34ca844bc79ac70646ca1"
+    },
+    {
+      "path": "Android_Server_Addon/tests/test_orders_update.py",
+      "before": null,
+      "after": "f3eaf9465485d84c9af41952094075cf5c05cf8d90c1aa5c20a3b6321486d91c"
+    },
+    {
+      "path": "Android_Server_Addon/update_orders_deletion.py",
+      "before": null,
+      "after": "610aca5d6ad289c276ae672c73e9e8b1a79e5afbd6485a1c395b7db992ff4a8b"
+    },
+    {
+      "path": "Apply_Android_Update_v9.ps1",
+      "before": null,
+      "after": "6153844f65e7485c2d3b48fa9d1fa78a054fb8f10a99ee42de63583582c17c77"
+    },
+    {
+      "path": "Donatix_Flutter/android/app/src/main/kotlin/tj/donatix/app/MainActivity.kt",
+      "before": "22cfcacfda780e976eec989d4a791f01fa0470fc65c7eb9f5b3cea7c6df95602",
+      "after": "8b8a119ccb571a70966b97f29f7ed524927891754db9f8a661c7c7742e6c106a"
+    },
+    {
+      "path": "Donatix_Flutter/lib/core/existing_site.dart",
+      "before": "f63a68af72cb301464e0c1f4a4163931e28ab0210d428402aafd40669b403278",
+      "after": "bae4f3f6ee8700e5956bffc0295edddae2f6272c3c2299b4ac2e39ad82aab8e6"
+    },
+    {
+      "path": "Donatix_Flutter/lib/screens/deletion.dart",
+      "before": "19ebc0d5ff5faba5caa547e8c4d9623966ef5867df72b5f5c766d38fb47a2fd0",
+      "after": "179671469f1a61bb8d1a49b21c0ab56fc0a691e73a09550a883fa4ee63a30329"
+    },
+    {
+      "path": "Donatix_Flutter/lib/screens/orders.dart",
+      "before": "93389082362b38c78840438026b5a0f49483e9ad9b75c362f435bbe0ffa09f59",
+      "after": "1dfd2f08185d8166a86b641c21edb3a8cd3d148687d9e8096dd569db54c41dd7"
+    },
+    {
+      "path": "Donatix_Flutter/test/order_history_deletion_test.dart",
+      "before": null,
+      "after": "47182d411c7b3872c09a869bf45a880f1756d39f61b9664b044ca6ff474f28fc"
+    },
+    {
+      "path": "ORDER_HISTORY_DELETE_v9_RU.md",
+      "before": null,
+      "after": "fc4bbe414e944e1ec93660e9aabab7d6fc3223c6fa817814961556d3c4427449"
+    }
+  ]
+}
