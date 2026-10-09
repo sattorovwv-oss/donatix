@@ -1,0 +1,176 @@
+---
+format_version: '26'
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: flutter
+
+app:
+  envs:
+  - BITRISE_FLUTTER_PROJECT_LOCATION: Donatix_Flutter
+    opts:
+      is_expand: false
+  - DONATIX_URL: https://donatix.tj
+    opts:
+      is_expand: false
+  - DONATIX_BUILD_NUMBER: ""
+    opts:
+      is_expand: false
+
+meta:
+  bitrise.io:
+    stack: linux-docker-android-22.04
+    machine_type_id: standard
+
+workflows:
+  android-release:
+    description: Signed Android release APK and AAB. Start manually from main.
+    steps:
+    - activate-ssh-key@4.1.1:
+        run_if: '{{getenv "SSH_RSA_PRIVATE_KEY" | ne ""}}'
+    - git-clone@8.5.1: {}
+    - set-java-version@1.2.1:
+        inputs:
+        - set_java_version: "17"
+    - flutter-installer@1.1.1:
+        inputs:
+        - version: "3.35.4"
+    - script@1.2.1:
+        title: Prepare protected Android release inputs
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/$BITRISE_FLUTTER_PROJECT_LOCATION"
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            set +x
+            if [[ "${BITRISE_GIT_BRANCH:-}" != main ]]; then
+              echo "Select branch main for android-release."
+              exit 1
+            fi
+            for name in BITRISEIO_ANDROID_KEYSTORE_URL BITRISEIO_ANDROID_KEYSTORE_PASSWORD BITRISEIO_ANDROID_KEYSTORE_ALIAS BITRISEIO_ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD GOOGLE_SERVICES_JSON; do
+              if [[ -z "${!name:-}" ]]; then
+                echo "Missing protected input: $name. Configure Code signing / Secrets."
+                exit 1
+              fi
+            done
+            export CM_KEYSTORE_PATH="$BITRISE_SOURCE_DIR/.donatix-private/upload.jks"
+            export CM_KEYSTORE_PASSWORD="$BITRISEIO_ANDROID_KEYSTORE_PASSWORD"
+            export CM_KEY_ALIAS="$BITRISEIO_ANDROID_KEYSTORE_ALIAS"
+            export CM_KEY_PASSWORD="$BITRISEIO_ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD"
+            python3 - <<'PY'
+            import os
+            from pathlib import Path
+            from urllib.parse import urlsplit
+            from urllib.request import HTTPRedirectHandler, build_opener
+
+            class HTTPSOnly(HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    if urlsplit(newurl).scheme != "https":
+                        raise ValueError("HTTPS required")
+                    return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+            try:
+                url = os.environ["BITRISEIO_ANDROID_KEYSTORE_URL"]
+                if urlsplit(url).scheme != "https":
+                    raise ValueError("HTTPS required")
+                limit = 10 * 1024 * 1024
+                with build_opener(HTTPSOnly()).open(url, timeout=60) as response:
+                    data = response.read(limit + 1)
+                if not data or len(data) > limit:
+                    raise ValueError("Invalid file size")
+                path = Path(os.environ["CM_KEYSTORE_PATH"])
+                path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+                path.parent.chmod(0o700)
+                fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "wb") as output:
+                    output.write(data)
+                path.chmod(0o600)
+            except Exception:
+                raise SystemExit("Keystore download failed. Check the uploaded Android keystore in Code signing.") from None
+            PY
+            if ! certificate=$(keytool -list -v -keystore "$CM_KEYSTORE_PATH" -storepass:env CM_KEYSTORE_PASSWORD -alias "$CM_KEY_ALIAS" 2>/dev/null); then
+              echo "Keystore validation failed. Check the existing store password and alias."
+              exit 1
+            fi
+            if printf '%s' "$certificate" | grep -Eqi 'Android Debug|AndroidDebugKey'; then
+              echo "A debug signing key cannot be used for this release."
+              exit 1
+            fi
+            unset certificate
+            python3 tool/configure_ci.py android --release
+            python3 tool/release_preflight.py --platform android
+    - script@1.2.1:
+        title: Install Android SDK 36
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            sdk="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/opt/android-sdk}}"
+            manager="$sdk/cmdline-tools/latest/bin/sdkmanager"
+            if [[ ! -x "$manager" ]]; then
+              manager=$(command -v sdkmanager || true)
+            fi
+            if [[ -z "$manager" || ! -x "$manager" || ! -d "$sdk" ]]; then
+              echo "Android SDK tools are missing. Select the Android Linux stack."
+              exit 1
+            fi
+            envman add --key ANDROID_SDK_ROOT --value "$sdk"
+            envman add --key ANDROID_HOME --value "$sdk"
+            "$manager" --sdk_root="$sdk" --licenses <<< "$(printf 'y\n%.0s' {1..100})" >/dev/null
+            "$manager" --sdk_root="$sdk" 'platforms;android-36' 'build-tools;36.0.0'
+    - script@1.2.1:
+        title: Check the release project
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/$BITRISE_FLUTTER_PROJECT_LOCATION"
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            flutter pub get
+            flutter analyze
+            python3 -m unittest discover -s tool -p 'test_*.py'
+            flutter test
+    - script@1.2.1:
+        title: Build signed release APK and AAB
+        inputs:
+        - working_dir: "$BITRISE_SOURCE_DIR/$BITRISE_FLUTTER_PROJECT_LOCATION"
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            number=$(python3 - <<'PY'
+            import os
+            raw = os.environ.get("DONATIX_BUILD_NUMBER", "")
+            if not raw:
+                raw = os.environ.get("BITRISE_BUILD_NUMBER", "")
+                if not raw.isascii() or not raw.isdecimal() or len(raw) > 10:
+                    raise SystemExit("BITRISE_BUILD_NUMBER must be a positive integer")
+                raw = str(1000 + int(raw))
+            if not raw.isascii() or not raw.isdecimal() or len(raw) > 10 or not 1 <= int(raw) <= 2100000000:
+                raise SystemExit("DONATIX_BUILD_NUMBER must be an integer between 1 and 2100000000")
+            print(int(raw))
+            PY
+            )
+            flutter build apk --release --build-number "$number" "--dart-define=DONATIX_URL=$DONATIX_URL"
+            flutter build appbundle --release --build-number "$number" "--dart-define=DONATIX_URL=$DONATIX_URL"
+            python3 tool/collect_android_release.py --output "$BITRISE_SOURCE_DIR/donatix-release"
+    - script@1.2.1:
+        title: Remove private signing inputs
+        is_always_run: true
+        inputs:
+        - content: |-
+            #!/usr/bin/env bash
+            set -euo pipefail
+            python3 - <<'PY'
+            import os
+            from pathlib import Path
+            root = Path(os.environ["BITRISE_SOURCE_DIR"])
+            project = root / os.environ["BITRISE_FLUTTER_PROJECT_LOCATION"]
+            for path in (root / ".donatix-private/upload.jks", project / "android/key.properties", project / "android/app/google-services.json"):
+                path.unlink(missing_ok=True)
+            PY
+    - deploy-to-bitrise-io@2.26.1:
+        is_always_run: false
+        inputs:
+        - deploy_path: "$BITRISE_SOURCE_DIR/donatix-release"
+        - is_compress: "false"
+        - is_enable_public_page: "false"
+        - notify_user_groups: none
+        - always_notify_user_groups: none
+        - notify_email_list: ""
