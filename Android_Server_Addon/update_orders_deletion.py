@@ -142,7 +142,8 @@ def validate_addon(manifest):
         desired[name] = (ROOT / "donatix_android_extension" / name).read_bytes()
         ast.parse(desired[name].decode())
         path = ADDON / name
-        if path.is_symlink() or (path.exists() and path.read_bytes() != desired[name]):
+        known = {digest(desired[name]), *manifest.get("previous_feature_modules", {}).get(name, [])}
+        if path.is_symlink() or (path.exists() and digest(path.read_bytes()) not in known):
             raise ValueError("An unrelated version of the feature module already exists: " + name)
     return desired
 

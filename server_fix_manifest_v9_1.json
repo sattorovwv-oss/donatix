@@ -1,0 +1,61 @@
+{
+  "format": 1,
+  "release": "9.1",
+  "requires": "Android v9 already applied",
+  "files": [
+    {
+      "path": "Android_Server_Addon/donatix_android_extension/factory.py",
+      "before": "604c8dbe05ee85db97ad3d260a441faf56c5de06aba140af710b799cf27fb3d9",
+      "after": "604c8dbe05ee85db97ad3d260a441faf56c5de06aba140af710b799cf27fb3d9",
+      "allowed_after": [
+        "604c8dbe05ee85db97ad3d260a441faf56c5de06aba140af710b799cf27fb3d9",
+        "bd9ec013a471216aa7e34e7f9f2a73e346b1bafcb92f0343f8f689554cea4c8a"
+      ]
+    },
+    {
+      "path": "Android_Server_Addon/donatix_android_extension/history.py",
+      "before": "977c02e6f6ee1133adfaa1153cb70dc81f52f6d5dc052590214f8c8e770d624b",
+      "after": "7e17378f860f1264de560c22d2446a3a1d4605abef32b7c31de9dd5d9446b3f0"
+    },
+    {
+      "path": "Android_Server_Addon/donatix_android_extension/erasure.py",
+      "before": "86bf3b824dc962415c69660f80502f24e906c294f18cf0c0f19a42e04b6773f6",
+      "after": "f89d193b456f0bd2fdab09e628125f83432d7392e00aea1fb46b1771fbb293d8"
+    },
+    {
+      "path": "Android_Server_Addon/orders_deletion_manifest.json",
+      "before": "504a247ea6a36a10daea3faba33da5e333ab6eda838db3c39ed2ebfba5c5ff90",
+      "after": "f1865abfc640bd71bbadd0164ac9703a63ad5d2d42a17f088d8a2f59e73d1bf5"
+    },
+    {
+      "path": "Android_Server_Addon/update_orders_deletion.py",
+      "before": "610aca5d6ad289c276ae672c73e9e8b1a79e5afbd6485a1c395b7db992ff4a8b",
+      "after": "8fdd486e730597c76735503bcedea9148a419886b717034174f5873509a77947"
+    },
+    {
+      "path": "Android_Server_Addon/tests/test_history_erasure.py",
+      "before": "7b4183f4e7c703617dd0df262bfc722dd069f8e600a34ca844bc79ac70646ca1",
+      "after": "274c7478bfb6de14129fb3af63b2d5b16664cfc309a40fea9c5fc9288b2602cf"
+    },
+    {
+      "path": "Android_Server_Addon/tests/test_orders_update.py",
+      "before": "f3eaf9465485d84c9af41952094075cf5c05cf8d90c1aa5c20a3b6321486d91c",
+      "after": "6f335d8ea65a5b0542536e8ffd4bd6314604d54b3f9cb42134e83d13d89b2f17"
+    },
+    {
+      "path": "Android_Server_Addon/tests/test_current_site_erasure.py",
+      "before": null,
+      "after": "672d881e4f6c4c42ce20a968bffbef7a43aa22aa264a98289e0a293bdf648ff2"
+    },
+    {
+      "path": "Apply_Server_Fix_v9_1.ps1",
+      "before": null,
+      "after": "19328796b6bbc72f9e5b3261c2aede7626fc788db80698e89d6f8263f9927b89"
+    },
+    {
+      "path": "SERVER_FIX_v9_1_RU.md",
+      "before": null,
+      "after": "4aa6ea14ce54943f0d3aa84da1a4c1cecc67950733b4dfeb1b8d9129609b5ce4"
+    }
+  ]
+}

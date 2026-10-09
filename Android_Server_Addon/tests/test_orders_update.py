@@ -94,3 +94,54 @@ def test_atomic_code_replacement_and_rollback_never_restore_customer_database(tm
     assert not (addon / "history.py").exists() and not (addon / "erasure.py").exists()
     with sqlite3.connect(site) as c:
         assert c.execute("SELECT id FROM customer_payments").fetchall() == [(1,), (2,)]
+
+
+def test_current_site_schema_and_code_verified_before_any_install(tmp_path, monkeypatch):
+    from donatix import db
+    import donatix
+    current = Path(donatix.__file__).parent.parent
+    manifest = update.read_manifest()
+    staged = tmp_path / "site"
+    for name, expected in manifest["site_code"].items():
+        data = (current / name).read_bytes()
+        # This contract uses the received current server snapshot.
+        assert update.digest(data) == expected
+        target = staged / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    database = tmp_path / "site.db"
+    db.init(database)
+    monkeypatch.setattr(update, "SITE", staged)
+    update.validate_site(manifest, database)
+    app = staged / "donatix/app.py"
+    app.write_bytes(app.read_bytes() + b"\n# unknown subsequent deployment\n")
+    with pytest.raises(ValueError, match="Site code changed"):
+        update.validate_site(manifest, database)
+    with sqlite3.connect(database) as c:
+        assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        c.execute("DROP TABLE guest_keys")
+    app.write_bytes((current / "donatix/app.py").read_bytes())
+    with pytest.raises(ValueError, match="Unexpected database schema: guest_keys"):
+        update.validate_site(manifest, database)
+
+
+def test_known_previous_feature_modules_upgrade_but_unknown_edits_stop(tmp_path, monkeypatch):
+    import os
+    if os.geteuid() != 0:
+        pytest.skip("Root-owned directory contract")
+    manifest = update.read_manifest()
+    addon = tmp_path / "opt" / "v1" / "extension"
+    addon.mkdir(parents=True)
+    for name in manifest["unchanged_modules"]:
+        (addon/name).write_bytes((ROOT/"donatix_android_extension"/name).read_bytes())
+    for name in ("factory.py", "history.py", "erasure.py"):
+        (addon/name).write_bytes((ROOT/"donatix_android_extension"/name).read_bytes())
+    previous = b"known previous feature module"
+    (addon/"erasure.py").write_bytes(previous)
+    manifest["previous_feature_modules"]["erasure.py"] = [update.digest(previous)]
+    monkeypatch.setattr(update, "ADDON", addon)
+    desired = update.validate_addon(manifest)
+    assert desired["erasure.py"] == (ROOT/"donatix_android_extension/erasure.py").read_bytes()
+    (addon/"erasure.py").write_bytes(previous + b"unknown edit")
+    with pytest.raises(ValueError, match="unrelated version"):
+        update.validate_addon(manifest)

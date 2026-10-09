@@ -10,6 +10,7 @@ import fcntl
 import hashlib
 import hmac
 import json
+import importlib.util
 import logging
 import os
 import secrets
@@ -19,7 +20,9 @@ import time
 from contextlib import closing, contextmanager
 from datetime import datetime, timezone
 from html import escape
+from functools import wraps
 from pathlib import Path
+from weakref import WeakValueDictionary
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
@@ -30,11 +33,78 @@ from donatix.api import ApiError, _limit
 from donatix.deps import check_csrf, csrf_token, get_conn, session_user
 from donatix.money import fmt
 
-ERASED = "Профиль, email, телефон, привязка Google/Telegram, пароли, сессии, ключи API, токены ботов, уведомления, ID игроков, переписка поддержки и файлы чеков."
+ERASED = "Профиль, email, телефон, привязка Google/Telegram, пароли, сессии, гостевые ключи, ключи API, токены ботов, уведомления, ID игроков, данные покупок, переписка поддержки, её вложения и файлы чеков."
 RETAINED = "Обезличенные суммы и статусы завершённых расчётов, платёжные идентификаторы и отпечатки чеков сохраняются для учёта и защиты от повторного зачисления. Восстановить аккаунт по ним нельзя."
 PUBLIC_PATH = "/android/account-deletion"
 PANEL_PATH = "/panel/android-account-deletion"
 LOG = logging.getLogger("donatix.android.erasure")
+_MANAGERS = WeakValueDictionary()
+
+
+def _deleted(user):
+    return bool(user and user["password_hash"] == "deleted" and
+                str(user["email"]).endswith("@deleted.invalid"))
+
+
+def _ticket_guards(manager):
+    """Stop late support replies from recreating an erased account's data.
+
+    Only the addon's running apps participate. Other accounts use the original
+    ticket implementations. Per-account locks serialize ticket writes with
+    erasure without modifying any website source or database schema.
+    """
+    if importlib.util.find_spec("donatix.tickets") is None:
+        return
+    from donatix import tickets
+    _MANAGERS[str(Path(manager.config.db_path).resolve())] = manager
+    if getattr(tickets.create, "_android_erasure_guard", False):
+        return
+    original_create, original_add, original_get = tickets.create, tickets.add, tickets.get
+    original_status = tickets.set_status
+
+    def owner_manager(conn):
+        path = conn.execute("PRAGMA database_list").fetchone()[2]
+        return _MANAGERS.get(str(Path(path).resolve())) if path else None
+
+    def available(conn, uid):
+        if _deleted(accounts.get_user(conn, uid)):
+            raise tickets.TicketError("Аккаунт и обращение удалены.")
+
+    @wraps(original_create)
+    def create(conn, config, user_id, *args, **kwargs):
+        active = owner_manager(conn)
+        if active is None:
+            return original_create(conn, config, user_id, *args, **kwargs)
+        with active.user_lock(user_id):
+            available(conn, user_id)
+            return original_create(conn, config, user_id, *args, **kwargs)
+
+    @wraps(original_add)
+    def add(conn, config, ticket_id, *args, **kwargs):
+        row, active = original_get(conn, ticket_id), owner_manager(conn)
+        if row is None or active is None:
+            return original_add(conn, config, ticket_id, *args, **kwargs)
+        with active.user_lock(row["user_id"]):
+            available(conn, row["user_id"])
+            return original_add(conn, config, ticket_id, *args, **kwargs)
+
+    @wraps(original_status)
+    def set_status(conn, ticket_id, *args, **kwargs):
+        row, active = original_get(conn, ticket_id), owner_manager(conn)
+        if row is None or active is None:
+            return original_status(conn, ticket_id, *args, **kwargs)
+        with active.user_lock(row["user_id"]):
+            available(conn, row["user_id"])
+            return original_status(conn, ticket_id, *args, **kwargs)
+
+    @wraps(original_get)
+    def get(conn, ticket_id, user_id=None):
+        row = original_get(conn, ticket_id, user_id)
+        return None if row is not None and owner_manager(conn) is not None and _deleted(
+            accounts.get_user(conn, row["user_id"])) else row
+
+    create._android_erasure_guard = True
+    tickets.create, tickets.add, tickets.get, tickets.set_status = create, add, get, set_status
 
 
 class DeleteIn(BaseModel):
@@ -83,10 +153,24 @@ class Erasure:
               user_id INTEGER NOT NULL, kind TEXT NOT NULL, name TEXT NOT NULL,
               after_ts REAL NOT NULL, PRIMARY KEY(user_id,kind,name));
             """)
+        _ticket_guards(self)
 
     def identity(self, user):
         return hmac.new(self.config.secret_key.encode(),
                         f"delete:{user['id']}:{user['created_at']}".encode(), hashlib.sha256).hexdigest()
+
+    @contextmanager
+    def user_lock(self, uid):
+        with open(str(self.store.path) + ".account-" + str(int(uid)) + ".lock", "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock, fcntl.LOCK_UN)
+
+    @staticmethod
+    def _columns(conn, table):
+        return {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
 
     @contextmanager
     def lock(self):
@@ -114,6 +198,10 @@ class Erasure:
             result.append("Есть незавершённые заказы. Удаление завершится после выдачи или возврата и расчёта баланса.")
         if conn.execute("SELECT 1 FROM payments WHERE user_id=? AND status='pending'", (uid,)).fetchone():
             result.append("Есть пополнения на проверке. Сначала необходимо завершить проверку и расчёты.")
+        if "intent" in Erasure._columns(conn, "payments") and conn.execute(
+            "SELECT 1 FROM payments WHERE user_id=? AND status='paid' AND intent IS NOT NULL AND intent_order IS NULL", (uid,)
+        ).fetchone():
+            result.append("Оплаченная покупка ещё обрабатывается. Сначала необходимо завершить заказ или возврат.")
         return result
 
     def info(self, conn, current):
@@ -143,6 +231,8 @@ class Erasure:
                 conn.execute("UPDATE api_keys SET revoked_at=?,key_enc=NULL WHERE user_id=?", (db.now(), uid))
                 conn.execute("UPDATE bots SET enabled=0,updated_at=? WHERE user_id=?", (db.now(), uid))
                 conn.execute("DELETE FROM push_subs WHERE user_id=?", (uid,))
+                if self._columns(conn, "guest_keys"):
+                    conn.execute("DELETE FROM guest_keys WHERE user_id=?", (uid,))
             self._mobile_cleanup(uid)
             self._poke_bots()
             reasons = self._process(conn, uid)
@@ -163,7 +253,7 @@ class Erasure:
             bots.RUNNER.poke()
 
     def _update(self, conn, table, uid, values):
-        columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        columns = self._columns(conn, table)
         values = {key: value for key, value in values.items() if key in columns}
         if values:
             assignments = ",".join(key + "=?" for key in values)
@@ -175,8 +265,12 @@ class Erasure:
         # Stage private-file paths durably before erasing their references.
         receipts = [r[0] for r in conn.execute("SELECT receipt_file FROM payments WHERE user_id=? AND receipt_file IS NOT NULL", (uid,))]
         bot_ids = [str(r[0]) for r in conn.execute("SELECT id FROM bots WHERE user_id=?", (uid,))]
+        ticket_files = []
+        if self._columns(conn, "tickets"):
+            ticket_files = [r[0] for r in conn.execute(
+                "SELECT m.file FROM ticket_messages m JOIN tickets t ON t.id=m.ticket_id WHERE t.user_id=? AND m.file IS NOT NULL", (uid,))]
         with self.store.transaction() as c:
-            for kind, names, delay in (("receipt", receipts, 0), ("bot", bot_ids, 30)):
+            for kind, names, delay in (("receipt", receipts, 0), ("bot", bot_ids, 30), ("ticket", ticket_files, 0)):
                 for name in names:
                     c.execute("INSERT OR IGNORE INTO erasure_files VALUES(?,?,?,?)", (uid, kind, name, time.time() + delay))
         tg_ids = [r[0] for r in conn.execute("SELECT tg_id FROM support_links WHERE user_id=? UNION SELECT tg_id FROM shop_users WHERE user_id=?", (uid, uid))]
@@ -198,7 +292,26 @@ class Erasure:
             for key, value in fields.items():
                 if key.lower() in ("uid", "id", "player_id", "user_id", "account_id") and isinstance(value, (str, int)):
                     owned_ids.add(str(value))
+        has_intents = "intent" in self._columns(conn, "payments")
+        if has_intents:
+            for row in conn.execute("SELECT intent FROM payments WHERE user_id=? AND intent IS NOT NULL", (uid,)):
+                try:
+                    payload = json.loads(row[0])
+                    items = payload.get("items", []) if isinstance(payload, dict) else []
+                    for item in items if isinstance(items, list) else []:
+                        fields = item.get("fields", {}) if isinstance(item, dict) else {}
+                        for key, value in fields.items() if isinstance(fields, dict) else []:
+                            if key.lower() in ("uid", "id", "player_id", "user_id", "account_id") and isinstance(value, (str, int)):
+                                owned_ids.add(str(value))
+                except (ValueError, TypeError):
+                    continue
         for player_id in owned_ids:
+            if has_intents and conn.execute("""SELECT 1 FROM payments p,
+                json_each(CASE WHEN json_valid(p.intent) THEN json_extract(p.intent,'$.items') ELSE '[]' END) item,
+                json_each(CASE WHEN json_valid(item.value) THEN json_extract(item.value,'$.fields') ELSE '{}' END) f
+                WHERE p.user_id<>? AND lower(f.key) IN ('uid','id','player_id','user_id','account_id')
+                  AND CAST(f.value AS TEXT)=? LIMIT 1""", (uid, player_id)).fetchone():
+                continue
             conn.execute("""DELETE FROM player_names WHERE uid=? AND NOT EXISTS (
                 SELECT 1 FROM orders o, json_each(CASE WHEN json_valid(o.fields_json)
                   THEN o.fields_json ELSE '{}' END) f
@@ -225,7 +338,8 @@ class Erasure:
                      "api_key_id": None, "webhook_state": "none"})
         conn.execute("UPDATE orders SET supplier_idem_key='erased-' || id WHERE user_id=?", (uid,))
         self._update(conn, "payments", uid, {"reference": None, "receipt_file": None, "receipt_ai": None,
-                     "admin_note": None, "pay_url": None, "pay_address": None, "ext_id": None})
+                     "admin_note": None, "pay_url": None, "pay_address": None,
+                     "intent": None, "intent_order": None})
         conn.execute("UPDATE bank_notices SET sender='',card_tail='',comment='',body='',note='' WHERE payment_id IN (SELECT id FROM payments WHERE user_id=?)", (uid,))
         self._update(conn, "transactions", uid, {"note": "Обезличенная операция удалённого аккаунта"})
         self._update(conn, "bots", uid, {"token_enc": security.seal(self.config.secret_key, ""),
@@ -234,7 +348,18 @@ class Erasure:
         # Notification IDs must never regress: the existing push worker uses
         # the global high-water mark and SQLite INTEGER PRIMARY KEY can reuse
         # deleted high IDs. Keep empty rows, erasing all notification content.
-        self._update(conn, "notifications", uid, {"text": "", "link": None, "read_at": db.now()})
+        # The current site's daily cleanup deletes old read notifications.
+        # Keep these empty anonymous ID reservations unread so cleanup cannot
+        # recycle a push cursor's highest ID into another customer's event.
+        self._update(conn, "notifications", uid, {"text": "", "link": None, "read_at": None})
+        if self._columns(conn, "tickets"):
+            conn.execute("DELETE FROM ticket_messages WHERE ticket_id IN (SELECT id FROM tickets WHERE user_id=?)", (uid,))
+            # Keep anonymous ticket IDs reserved: old Telegram reply buttons
+            # must never target a newly created ticket of another customer.
+            self._update(conn, "tickets", uid, {"subject": "", "topic": "other", "order_ref": None,
+                         "status": "closed", "admin_msg": None, "client_seen_at": None, "admin_seen_at": None})
+        if self._columns(conn, "guest_keys"):
+            conn.execute("DELETE FROM guest_keys WHERE user_id=?", (uid,))
         for table in ("logins", "api_keys", "push_subs", "support_links", "support_codes",
                       "support_link_codes", "support_tickets", "shop_users", "dcoin_ledger"):
             conn.execute(f"DELETE FROM {table} WHERE user_id=?", (uid,))
@@ -264,7 +389,7 @@ class Erasure:
             return []
         if job["state"] == "waiting" and time.time() < job["requested_at"] + self.grace_seconds:
             return ["Доступ отключён. Уже принятые запросы завершаются; затем данные будут очищены автоматически."]
-        with db.tx(conn):
+        with self.user_lock(uid), db.tx(conn):
             user = accounts.get_user(conn, uid)
             if user and self.identity(user) != job["identity"]:
                 raise ValueError("Account identity changed; erasure stopped")
@@ -288,7 +413,15 @@ class Erasure:
         with self.store.connect() as c:
             jobs = c.execute("SELECT * FROM erasure_files WHERE user_id=? AND after_ts<=?", (uid, time.time())).fetchall()
         for job in jobs:
-            base = (Path(self.config.db_path).parent / ("bots" if job["kind"] == "bot" else "receipts")).resolve()
+            folder = {"bot": "bots", "receipt": "receipts", "ticket": "tickets"}.get(job["kind"])
+            if folder is None:
+                LOG.warning("Unknown erasure file kind; manual cleanup required")
+                continue
+            directory = Path(self.config.db_path).parent / folder
+            if directory.is_symlink():
+                LOG.warning("Unsafe erasure directory; manual cleanup required")
+                continue
+            base = directory.resolve()
             path = base / job["name"]
             # Private files must be a direct child. Never follow a symlink or
             # accept an absolute/path-traversal name from database metadata.
@@ -311,10 +444,14 @@ class Erasure:
                             pass
                     if path.exists():
                         shutil.rmtree(path)
+                elif job["kind"] == "receipt":
+                    if not conn.execute("SELECT 1 FROM payments WHERE receipt_file=?", (job["name"],)).fetchone():
+                        path.unlink(missing_ok=True)
                 else:
-                    if conn.execute("SELECT 1 FROM payments WHERE receipt_file=?", (job["name"],)).fetchone():
-                        continue
-                    path.unlink(missing_ok=True)
+                    if not conn.execute("SELECT 1 FROM ticket_messages WHERE file=?", (job["name"],)).fetchone():
+                        path.unlink(missing_ok=True)
+                # A file still referenced by another account belongs to that
+                # account's records; retain it, dropping only this owner's job.
             except OSError:
                 continue  # Durable job remains and is retried after restart.
             with self.store.connect() as c:
@@ -372,7 +509,9 @@ def mount(app, router, manager, user_dependency, header_csrf):
     @router.post("/account/deletion")
     def delete(body: DeleteIn, request: Request, current=Depends(user_dependency), conn=Depends(get_conn)):
         header_csrf(request)
-        return JSONResponse(submit(body, request, conn, current), headers={"Cache-Control": "no-store"})
+        response = JSONResponse(submit(body, request, conn, current), headers={"Cache-Control": "no-store"})
+        response.delete_cookie("dx_guest", path="/")
+        return response
 
     public = APIRouter(include_in_schema=False)
 
@@ -428,7 +567,9 @@ def mount(app, router, manager, user_dependency, header_csrf):
             return form_page(request, conn, current, str(exc), exc.http_status)
         except ValidationError:
             return form_page(request, conn, current, "Проверьте длину пароля и подтверждения.", 422)
-        return page('<h2>' + ("Заявка принята" if result["state"] != "completed" else "Данные удалены") + '</h2><p>'
+        response = page('<h2>' + ("Заявка принята" if result["state"] != "completed" else "Данные удалены") + '</h2><p>'
                     + escape(result["message"]) + '</p>' + ''.join('<p>' + escape(reason) + '</p>' for reason in result["reasons"]))
+        response.delete_cookie("dx_guest", path="/")
+        return response
 
     app.include_router(public)

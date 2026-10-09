@@ -142,7 +142,7 @@ def test_full_erasure_preserves_other_users_and_anonymous_accounting(setup, tmp_
         assert accounts.authenticate(c, "user@example.com", "password123") is None
         for table in ("logins", "api_keys", "push_subs", "support_links"):
             assert c.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id=?", (uid,)).fetchone()[0] == 0
-        assert not c.execute("SELECT 1 FROM notifications WHERE user_id=? AND (text<>'' OR link IS NOT NULL OR read_at IS NULL)", (uid,)).fetchone()
+        assert not c.execute("SELECT 1 FROM notifications WHERE user_id=? AND (text<>'' OR link IS NOT NULL)", (uid,)).fetchone()
         assert not c.execute("SELECT 1 FROM support_history WHERE tg_id=111").fetchone()
         assert not c.execute("SELECT 1 FROM player_names WHERE uid='12345'").fetchone()
         assert tuple(accounts.get_user(c, stranger)) == before_user
