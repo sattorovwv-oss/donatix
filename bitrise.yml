@@ -18,7 +18,7 @@ app:
 meta:
   bitrise.io:
     stack: linux-docker-android-22.04
-    machine_type_id: standard
+    machine_type_id: g2.linux.medium
 
 workflows:
   android-release:

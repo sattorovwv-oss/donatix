@@ -4,7 +4,9 @@
 
 Открой Workflow Editor → YAML. Замени весь текст содержимым файла `bitrise.yml`, нажми Save changes. Конфигурация должна содержать workflow `android-release`. В проекте сейчас выбрано хранение конфигурации на Bitrise: добавление файла в GitHub само по себе не заменяет текст в редакторе.
 
-Используется Android Linux stack `linux-docker-android-22.04`, машина `standard` (Linux Medium), Flutter 3.35.4, Java 17 и Android SDK 36. Если Bitrise сообщает, что этот стек недоступен для аккаунта, в Stacks & Machines выбери доступный Ubuntu Android stack и Linux Medium, сохрани новый идентификатор стека. Наличие бесплатных минут/кредитов зависит от текущего плана аккаунта.
+Используется Android Linux stack `linux-docker-android-22.04`, машина `g2.linux.medium` (Linux M), Flutter 3.35.4, Java 17 и Android SDK 36. Если Bitrise сообщает, что стек или машина недоступны для аккаунта, в Stacks & Machines выбери доступный Ubuntu Android stack и Linux-машину из списка своего плана, сохрани их идентификаторы. Наличие бесплатных минут/кредитов зависит от текущего плана аккаунта.
+
+Если при сохранении появляется `Invalid default machine type standard`, замени строку `machine_type_id: standard` на `machine_type_id: g2.linux.medium`. В актуальном `bitrise.yml` это исправление уже внесено.
 
 ## 2. Загрузить существующий ключ подписи
 
