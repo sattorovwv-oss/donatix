@@ -1,0 +1,163 @@
+name: Android release APK + AAB
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: 'Version code (leave empty for 1000 + run number)'
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: donatix-android-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && github.repository == 'sattorovwv-oss/donatix'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+        working-directory: Donatix_Flutter
+    env:
+      DONATIX_URL: https://donatix.tj
+
+    steps:
+      - name: Fetch main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Java 17
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Validate and restore protected signing inputs
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          CM_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          CM_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          CM_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+          BUILD_NUMBER_INPUT: ${{ inputs.build_number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, binascii, json, os, subprocess
+          from pathlib import Path
+
+          names = {
+              'ANDROID_KEYSTORE_BASE64': 'ANDROID_KEYSTORE_BASE64',
+              'CM_KEYSTORE_PASSWORD': 'ANDROID_KEYSTORE_PASSWORD',
+              'CM_KEY_ALIAS': 'ANDROID_KEY_ALIAS',
+              'CM_KEY_PASSWORD': 'ANDROID_KEY_PASSWORD',
+              'GOOGLE_SERVICES_JSON': 'GOOGLE_SERVICES_JSON',
+          }
+          missing = [secret for env, secret in names.items() if not os.environ.get(env)]
+          if missing:
+              raise SystemExit('Add repository Actions secrets: ' + ', '.join(missing))
+          requested = os.environ.get('BUILD_NUMBER_INPUT', '').strip()
+          if requested and (not requested.isascii() or not requested.isdecimal()):
+              raise SystemExit('Build number must contain decimal digits only.')
+          if len(requested) > 10:
+              raise SystemExit('Build number is too large.')
+          number = int(requested) if requested else 1000 + int(os.environ['GITHUB_RUN_NUMBER'])
+          if not 1 <= number <= 2100000000:
+              raise SystemExit('Build number must be between 1 and 2100000000.')
+          try:
+              raw = base64.b64decode(''.join(os.environ['ANDROID_KEYSTORE_BASE64'].split()), validate=True)
+          except (ValueError, binascii.Error):
+              raise SystemExit('ANDROID_KEYSTORE_BASE64 is not a valid Base64 keystore.') from None
+          if not raw:
+              raise SystemExit('ANDROID_KEYSTORE_BASE64 contains an empty file.')
+          key = Path(os.environ['RUNNER_TEMP']) / 'donatix-upload.jks'
+          key.write_bytes(raw)
+          key.chmod(0o600)
+          env = dict(os.environ, CM_KEYSTORE_PATH=str(key))
+          checked = subprocess.run([
+              'keytool', '-J-Duser.language=en', '-J-Duser.country=US',
+              '-list', '-v', '-keystore', str(key),
+              '-storepass:env', 'CM_KEYSTORE_PASSWORD', '-alias', env['CM_KEY_ALIAS'],
+          ], env=env, capture_output=True, text=True)
+          if checked.returncode:
+              raise SystemExit('Keystore, store password or key alias is invalid. Check the existing signing inputs.')
+          if 'CN=Android Debug' in checked.stdout:
+              raise SystemExit('Use the existing release/upload key, not an Android debug certificate.')
+          subprocess.run(['python3', 'tool/configure_ci.py', 'android', '--release'], env=env, check=True)
+          subprocess.run(['python3', 'tool/release_preflight.py', '--platform', 'android'], env=env, check=True)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('DONATIX_BUILD_NUMBER=' + str(number) + '\n')
+          print('Protected release inputs validated. Version code:', number)
+          PY
+
+      - name: Flutter 3.35.4
+        uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
+        with:
+          flutter-version: '3.35.4'
+          channel: stable
+          architecture: x64
+          cache: true
+
+      - name: Android SDK 36
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$sdk_root" && test -d "$sdk_root"
+          export ANDROID_HOME="$sdk_root" ANDROID_SDK_ROOT="$sdk_root"
+          manager="$(command -v sdkmanager || true)"
+          if [[ -z "$manager" ]]; then
+            manager="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          "$manager" --licenses <<< "$(printf 'y\n%.0s' {1..100})" > /dev/null
+          "$manager" 'platforms;android-36' 'build-tools;36.0.0'
+          printf 'ANDROID_HOME=%s\nANDROID_SDK_ROOT=%s\n' "$sdk_root" "$sdk_root" >> "$GITHUB_ENV"
+          chmod +x android/gradlew
+
+      - name: Dependencies and release checks
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter analyze
+          python3 -m unittest discover -s tool -p 'test_*.py'
+          flutter test
+
+      - name: Build signed release APK
+        run: |
+          set -euo pipefail
+          flutter build apk --release --build-number="$DONATIX_BUILD_NUMBER" --dart-define=DONATIX_URL="$DONATIX_URL"
+
+      - name: Build signed release AAB
+        run: |
+          set -euo pipefail
+          flutter build appbundle --release --build-number="$DONATIX_BUILD_NUMBER" --dart-define=DONATIX_URL="$DONATIX_URL"
+
+      - name: Verify release signatures and 16 KB support
+        run: |
+          set -euo pipefail
+          python3 tool/collect_android_release.py --output ../donatix-release
+
+      - name: Downloadable signed APK and AAB
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Donatix-Android-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            donatix-release/Donatix-release.apk
+            donatix-release/Donatix-release.aab
+            donatix-release/release-verification.json
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Remove temporary signing inputs
+        if: always()
+        run: |
+          rm -f -- android/key.properties android/app/google-services.json "$RUNNER_TEMP/donatix-upload.jks"
