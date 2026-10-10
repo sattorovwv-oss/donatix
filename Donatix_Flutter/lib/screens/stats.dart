@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../widgets/ui.dart';
 import '../widgets/charts.dart';
+import 'site_section.dart';
 
 class StatsScreen extends StatefulWidget {
   final DonatixApi api;
@@ -22,6 +23,14 @@ class _StatsScreenState extends State<StatsScreen> {
         'tz_offset': DateTime.now().timeZoneOffset.inHours,
       }),
       builder: (context, d) {
+        if (d['site_document'] != null) {
+          return SiteSectionContent(
+            api: widget.api,
+            document: d['site_document'],
+            path: d['site_path'],
+            title: 'Аналитика',
+          );
+        }
         final a = d['analytics'] as Map;
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
