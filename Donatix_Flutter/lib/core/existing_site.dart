@@ -1585,8 +1585,25 @@ class ExistingSiteApi {
     };
   }
 
+  Future<dom.Document> sectionPage(
+    String path, {
+    Map<String, dynamic>? query,
+  }) async {
+    final doc = await page(path, query: query);
+    if (doc.querySelector('form[action="/login"]') != null) {
+      await api.clear();
+      api.onSessionExpired?.call();
+      throw const ApiFailure('Сессия истекла. Войдите снова.', 401);
+    }
+    return doc;
+  }
+
   Future<Map<String, dynamic>> support() async {
-    final doc = await page('/panel/support');
+    final doc = await sectionPage('/panel/support');
+    // The current site uses tickets and a knowledge base instead of link codes.
+    if (doc.querySelector('.sp-hero, .sp-cards, #topic-sheet') != null) {
+      return {'ok': true, 'site_document': doc, 'site_path': '/panel/support'};
+    }
     final code = text(doc.querySelector('#sc-code, .sc-code code'));
     if (code.isEmpty && doc.querySelector('.card.empty') == null) {
       throw const ApiFailure(
@@ -1802,12 +1819,26 @@ class ExistingSiteApi {
   }
 
   Future<Map<String, dynamic>> stats(Map<String, dynamic> query) async {
-    final doc = await page(
+    final doc = await sectionPage(
       '/panel/stats',
       query: {'period': query['period'] ?? '30d'},
     );
     final cards = doc.querySelectorAll('.scard .value');
-    if (cards.length < 5) throw const ApiFailure('Сайт не передал статистику.');
+    // Keep the site's real metrics and filters when its layout changes. Do not
+    // turn an unrecognised layout into missing statistics or invented zeroes.
+    if (cards.length < 5) {
+      if (text(doc.querySelector('main#main, main')).isEmpty) {
+        throw const ApiFailure('Сайт не передал статистику.');
+      }
+      return {
+        'ok': true,
+        'site_document': doc,
+        'site_path': Uri(
+          path: '/panel/stats',
+          queryParameters: {'period': '${query['period'] ?? '30d'}'},
+        ).toString(),
+      };
+    }
     final chart = doc.querySelector('.chart-card');
     List<List<double>> points(String selector) {
       final source = chart?.querySelector(selector)?.attributes['d'] ?? '';

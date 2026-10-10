@@ -5,6 +5,7 @@ import '../core/api.dart';
 import '../core/checkout.dart';
 import '../widgets/ui.dart';
 import 'account.dart';
+import 'site_section.dart';
 
 Future<void> externalLink(BuildContext context, String value) async {
   final uri = Uri.tryParse(value);
@@ -637,7 +638,7 @@ class _SupportScreenState extends State<SupportScreen> {
       title: const Text('Поддержка'),
       actions: [
         IconButton(
-          tooltip: 'Получить новый код',
+          tooltip: 'Обновить поддержку',
           onPressed: busy ? null : () => setState(() => revision++),
           icon: const Icon(Icons.refresh),
         ),
@@ -647,69 +648,78 @@ class _SupportScreenState extends State<SupportScreen> {
       key: ValueKey(revision),
       // The live website supports this page even without the mobile module.
       load: () => widget.api.existingSite.support(),
-      builder: (context, d) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Heading(
-            'Поддержка в Telegram',
-            subtitle:
-                'Помощник отвечает сразу, по-таджикски и по-русски: заказы, пополнения, баланс, свой бот.',
-          ),
-          if (text(d['code']).isEmpty)
-            const Surface(child: Text('Бот поддержки ещё не подключён.'))
-          else
-            Surface(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Heading('1 · Нажмите кнопку'),
-                  const Text('Откроется бот, и он сразу узнает ваш аккаунт.'),
-                  if (text(d['bot']).isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '@${d['bot']}',
-                      style: Theme.of(context).textTheme.bodySmall,
+      builder: (context, d) => d['site_document'] != null
+          ? SiteSectionContent(
+              api: widget.api,
+              document: d['site_document'],
+              path: d['site_path'],
+              title: 'Поддержка',
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Heading(
+                  'Поддержка в Telegram',
+                  subtitle:
+                      'Помощник отвечает сразу, по-таджикски и по-русски: заказы, пополнения, баланс, свой бот.',
+                ),
+                if (text(d['code']).isEmpty)
+                  const Surface(child: Text('Бот поддержки ещё не подключён.'))
+                else
+                  Surface(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Heading('1 · Нажмите кнопку'),
+                        const Text(
+                          'Откроется бот, и он сразу узнает ваш аккаунт.',
+                        ),
+                        if (text(d['bot']).isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '@${d['bot']}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        BusyButton(
+                          'Открыть Telegram',
+                          onPressed: text(d['url']).isEmpty
+                              ? null
+                              : () => externalLink(context, text(d['url'])),
+                        ),
+                        const SizedBox(height: 20),
+                        const Heading('2 · Или отправьте код'),
+                        SelectableText(
+                          text(d['code']),
+                          style: const TextStyle(
+                            fontSize: 28,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => copyValue(context, text(d['code'])),
+                          child: const Text('Копировать'),
+                        ),
+                        Text(
+                          'Код одноразовый, действует ${d['minutes']} минут. Нужен новый — обновите страницу.',
+                        ),
+                        const SizedBox(height: 12),
+                        BusyButton(
+                          'Получить код в уведомления',
+                          busy: busy,
+                          onPressed: code,
+                        ),
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Никому не пересылайте код: с ним видны ваши заказы и баланс.',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ],
                     ),
-                  ],
-                  const SizedBox(height: 12),
-                  BusyButton(
-                    'Открыть Telegram',
-                    onPressed: text(d['url']).isEmpty
-                        ? null
-                        : () => externalLink(context, text(d['url'])),
                   ),
-                  const SizedBox(height: 20),
-                  const Heading('2 · Или отправьте код'),
-                  SelectableText(
-                    text(d['code']),
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () => copyValue(context, text(d['code'])),
-                    child: const Text('Копировать'),
-                  ),
-                  Text(
-                    'Код одноразовый, действует ${d['minutes']} минут. Нужен новый — обновите страницу.',
-                  ),
-                  const SizedBox(height: 12),
-                  BusyButton(
-                    'Получить код в уведомления',
-                    busy: busy,
-                    onPressed: code,
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Никому не пересылайте код: с ним видны ваши заказы и баланс.',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ],
-              ),
+              ],
             ),
-        ],
-      ),
     ),
   );
 }
