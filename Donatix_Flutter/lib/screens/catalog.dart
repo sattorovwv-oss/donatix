@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../core/catalog_names.dart';
 import '../widgets/ui.dart';
+import '../widgets/product_art.dart';
 import '../core/navigation.dart';
 import 'cart.dart';
 import 'telegram.dart';
@@ -309,59 +310,82 @@ class _PacksScreenState extends State<PacksScreen> {
                 .where(
                   (p) => (region ?? '').isEmpty || text(p['region']) == region,
                 )
-                .map(
-                  (p) => Surface(
-                    padding: EdgeInsets.zero,
-                    child: ListTile(
-                      title: Text(text(p['title'] ?? p['name'])),
-                      subtitle: Text(text(p['region_title'])),
-                      leading: p['kind'] == 'topup' && p['max_quantity'] == 1
-                          ? IconButton(
-                              tooltip: 'Добавить в корзину',
-                              icon: const Icon(Icons.add_shopping_cart),
-                              onPressed:
-                                  cart.values.fold<int>(0, (a, b) => a + b) >=
-                                      20
-                                  ? null
-                                  : () {
-                                      final picked = products.where(
-                                        (r) =>
-                                            cart.containsKey(r['product_id']),
-                                      );
-                                      if (picked.isNotEmpty &&
-                                          text(picked.first['region']) !=
-                                              text(p['region'])) {
-                                        message(
-                                          context,
-                                          'В одной корзине — пакеты одного региона.',
-                                        );
-                                        return;
-                                      }
-                                      setState(
-                                        () => cart[text(p['product_id'])] =
-                                            (cart[text(p['product_id'])] ?? 0) +
-                                            1,
-                                      );
-                                    },
-                            )
-                          : null,
-                      trailing: Text(
-                        widget.api.displayPrice(p['price_usd']),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              purchasePage(widget.api, text(p['product_id'])),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
+                .map((p) => packCard(p as Map, products)),
           ],
         );
       },
+    ),
+  );
+
+  Widget packCard(Map p, List products) => Surface(
+    padding: EdgeInsets.zero,
+    child: InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => purchasePage(widget.api, text(p['product_id'])),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            ProductArt(p),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    text(p['title'] ?? p['name']),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                  if (text(p['region_title']).isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      text(p['region_title']),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.api.displayPrice(p['price_usd']),
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (p['kind'] == 'topup' && p['max_quantity'] == 1)
+              IconButton(
+                tooltip: 'Добавить в корзину',
+                icon: const Icon(Icons.add_shopping_cart),
+                onPressed: cart.values.fold<int>(0, (a, b) => a + b) >= 20
+                    ? null
+                    : () {
+                        final picked = products.where(
+                          (r) => cart.containsKey(r['product_id']),
+                        );
+                        if (picked.isNotEmpty &&
+                            text(picked.first['region']) != text(p['region'])) {
+                          message(
+                            context,
+                            'В одной корзине — пакеты одного региона.',
+                          );
+                          return;
+                        }
+                        setState(
+                          () => cart[text(p['product_id'])] =
+                              (cart[text(p['product_id'])] ?? 0) + 1,
+                        );
+                      },
+              ),
+          ],
+        ),
+      ),
     ),
   );
 }

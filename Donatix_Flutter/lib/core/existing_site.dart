@@ -1587,14 +1587,53 @@ class ExistingSiteApi {
 
   Future<Map<String, dynamic>> support() async {
     final doc = await page('/panel/support');
-    final link = doc.querySelector('.sc-open')?.attributes['href'] ?? '';
-    final uri = Uri.tryParse(link);
+    final code = text(doc.querySelector('#sc-code, .sc-code code'));
+    if (code.isEmpty && doc.querySelector('.card.empty') == null) {
+      throw const ApiFailure(
+        'Не удалось загрузить код поддержки. Нажмите «Повторить».',
+      );
+    }
+    final links = doc.querySelectorAll(
+      '.sc-open[href], .support-card a[href], .sc-step a[href]',
+    );
+    final botLink = links.where((element) {
+      final uri = Uri.tryParse(element.attributes['href'] ?? '');
+      return uri != null &&
+          uri.scheme == 'https' &&
+          uri.host == 't.me' &&
+          uri.pathSegments.isNotEmpty &&
+          uri.userInfo.isEmpty;
+    }).toList();
+    final preferred = botLink.where(
+      (element) =>
+          element.classes.contains('sc-open') ||
+          Uri.parse(
+            element.attributes['href']!,
+          ).queryParameters.containsKey('start'),
+    );
+    final rawLink =
+        (preferred.firstOrNull ?? botLink.firstOrNull)?.attributes['href'];
+    final uri = rawLink == null ? null : Uri.parse(rawLink);
+    final link = uri == null || code.isEmpty
+        ? uri?.toString() ?? ''
+        : uri
+              .replace(
+                queryParameters: {
+                  ...uri.queryParameters,
+                  'start': code.replaceFirst(
+                    RegExp(r'^DX-', caseSensitive: false),
+                    '',
+                  ),
+                },
+              )
+              .toString();
+    final expiry = text(doc.querySelector('.sc-step .muted.small'));
     return {
       'ok': true,
-      'code': text(doc.querySelector('#sc-code')),
+      'code': code,
       'url': link,
-      'bot': uri?.pathSegments.lastOrNull ?? '',
-      'minutes': integer(text(doc.querySelector('.sc-step .muted.small'))),
+      'bot': uri?.pathSegments.firstOrNull ?? '',
+      'minutes': integer(expiry),
     };
   }
 
