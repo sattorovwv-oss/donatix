@@ -3,6 +3,7 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import '../core/api.dart';
 import '../widgets/ui.dart';
+import '../widgets/product_art.dart';
 import '../core/checkout.dart';
 
 class PurchaseScreen extends StatefulWidget {
@@ -156,7 +157,18 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Heading(text(product!['title'] ?? product!['name'])),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ProductArt(product!, size: 64),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Heading(
+                              text(product!['title'] ?? product!['name']),
+                            ),
+                          ),
+                        ],
+                      ),
                       InfoRow(
                         'Цена за единицу',
                         widget.api.displayPrice(product!['price_usd']),

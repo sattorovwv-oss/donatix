@@ -604,7 +604,11 @@ class _SupportScreenState extends State<SupportScreen> {
   Future<void> code() async {
     setState(() => busy = true);
     try {
-      await widget.api.post('/api/v1/mobile/support/code', {});
+      await widget.api.existingSite.form(
+        '/panel/support/code',
+        {},
+        back: '/panel/support',
+      );
       if (mounted) {
         await Navigator.push(
           context,
@@ -617,24 +621,32 @@ class _SupportScreenState extends State<SupportScreen> {
     } catch (e) {
       if (mounted) message(context, e);
     } finally {
-      if (mounted) setState(() => busy = false);
+      // A new notification code revokes the code in the previously shown link.
+      if (mounted) {
+        setState(() {
+          busy = false;
+          revision++;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: const Text('Поддержка в Telegram'),
+      title: const Text('Поддержка'),
       actions: [
         IconButton(
-          onPressed: () => setState(() => revision++),
+          tooltip: 'Получить новый код',
+          onPressed: busy ? null : () => setState(() => revision++),
           icon: const Icon(Icons.refresh),
         ),
       ],
     ),
     body: AsyncPage(
       key: ValueKey(revision),
-      load: () => widget.api.post('/api/v1/mobile/support/link', {}),
+      // The live website supports this page even without the mobile module.
+      load: () => widget.api.existingSite.support(),
       builder: (context, d) => Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -652,9 +664,16 @@ class _SupportScreenState extends State<SupportScreen> {
                 children: [
                   const Heading('1 · Нажмите кнопку'),
                   const Text('Откроется бот, и он сразу узнает ваш аккаунт.'),
+                  if (text(d['bot']).isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '@${d['bot']}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
                   const SizedBox(height: 12),
                   BusyButton(
-                    'Открыть бота @${d['bot']}',
+                    'Открыть Telegram',
                     onPressed: text(d['url']).isEmpty
                         ? null
                         : () => externalLink(context, text(d['url'])),

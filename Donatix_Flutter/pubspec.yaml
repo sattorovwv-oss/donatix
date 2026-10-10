@@ -29,6 +29,7 @@ flutter:
     - assets/google.svg
     - assets/ref-gift.svg
     - assets/ref-gift-base.svg
+    - assets/products/
     - assets/Onest-LICENSE.txt
   fonts:
     - family: Onest
